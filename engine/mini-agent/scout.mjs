@@ -45,7 +45,7 @@ const ACTORS = {
   jobmaster:{ id: "getascraper/jobmaster-scraper", perItem: 0.0015, runs: () => [{ searchQueries: [SEARCH, HE].filter(Boolean), maxItems: ROWS, maxItemsPerQuery: HE ? half : ROWS, sortBy: "newest" }] },
 };
 const FREE = {
-  drushim: () => drushimFree([SEARCH, HE], { pages: 2 }),
+  drushim: () => drushimFree([...new Set([SEARCH, HE, ...(entry.drushimQueries || [])].filter(Boolean))], { pages: 3 }), // Drushim ranks by relevance, so breadth = freshness
   careers: () => careersFree(),
 };
 for (const b of BOARDS) if (!ACTORS[b] && !FREE[b]) { console.log("unknown board:", b, "— use", [...Object.keys(ACTORS), ...Object.keys(FREE)].join(",")); process.exit(1); }
@@ -100,8 +100,15 @@ function titleVerdict(t) {
   if (requireAlso.length && !requireAlso.some(r => r.test(t))) return "out";
   if (includes.some(r => r.test(t))) return "in";
   if (kwWords.length > 1 && kwWords.every(w => t.toLowerCase().includes(w))) return "in";
-  return "out";
+  return "maybe"; // not excluded, just not named in the title
 }
+// Hebrew boards write vague titles ("מנהל/ת E-commerce") and put the substance in the description:
+// there a "maybe" title passes when the description names at least 2 different terms from the keyword's list.
+const DESC_BOARDS = new Set(["drushim", "drushimapify", "alljobs", "jobmaster"]);
+const FAMILY = /שיווק|marketing|דיגיט|digital|crm|מוצר|product|לקוחות|customer|e-?commerce|growth|אוטומצ|automation|מערכות|\bai\b|בינה מלאכותית|gtm|revops|פרויקט|project|מאמן|trainer|תיוג/i;
+const core = [KW, SEARCH, HE].filter(Boolean).map(rx);
+const descOk = d => { d = String(d || ""); return core.some(r => r.test(d)) || includes.filter(r => r.test(d)).length >= 3; };
+const relevant = (b, j) => { const v = titleVerdict(j.title); return v === "in" || (v === "maybe" && DESC_BOARDS.has(b) && FAMILY.test(j.title || "") && descOk(j.desc)); };
 const normKey = j => (String(j.company || "").toLowerCase().replace(/[^a-z֐-׿0-9]/g, "").slice(0, 10)) + "|" + String(j.title || "").toLowerCase().replace(/[^a-z֐-׿0-9]/g, "").slice(0, 24);
 
 // ---------- apify ----------
@@ -165,7 +172,7 @@ for (const b of BOARDS) {
   for (const it of items) {
     const j = { board: b, ...NORM[b](it) }; j.dayOnly = /T21:59:59\.000Z$/.test(j.posted || "");
     if (!j.url || seenUrl.has(j.url)) continue; seenUrl.add(j.url);
-    if (!ALL_TITLES && titleVerdict(j.title) === "out") { s.title++; continue; }
+    if (!ALL_TITLES && !relevant(b, j)) { s.title++; continue; }
     if (!locOk(j)) { s.loc++; continue; }
     if (!daysOk(j)) { s.days++; continue; }
     s.kept++;
