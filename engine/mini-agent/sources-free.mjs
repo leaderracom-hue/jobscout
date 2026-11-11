@@ -43,7 +43,7 @@ async function comeet(c) {
   const html = await get(`https://www.comeet.com/jobs/${c.slug}/${c.uid}`); if (!html) return [];
   const m = html.match(/COMPANY_POSITIONS_DATA\s*=\s*(\[[\s\S]*?\]);/); if (!m) return [];
   return JSON.parse(m[1]).map(p => ({ title: p.name, company: p.company_name || c.name, location: [p.location?.city, p.location?.country].filter(Boolean).join(", "),
-    posted: iso(p.time_updated), url: p.url_active_page || p.url_comeet_hosted_page, desc: "", workplace: p.workplace_type || "", il: (p.location?.country || "") === "IL" }));
+    posted: iso(p.time_updated), url: p.url_comeet_hosted_page || p.url_active_page, desc: "", workplace: p.workplace_type || "", il: (p.location?.country || "") === "IL" }));
 }
 async function greenhouse(c) {
   const t = await get(`https://boards-api.greenhouse.io/v1/boards/${c.slug}/jobs?content=true`); if (!t) return [];

@@ -62,8 +62,8 @@ const relDays = s => { // "פורסם לפני 4 שעות" / "לפני 2 ימי�
   return new Date(Date.now() - n * unit).toISOString();
 };
 const NORM = {
-  linkedin: j => ({ title: j.title, company: j.companyName, location: j.location, posted: relDays(j.postedTime) || iso(j.publishedAt), url: j.jobUrl, easyApply: j.applyType === "EASY_APPLY", poster: j.posterFullName || "", applicants: j.applicationsCount || "", desc: j.description }),
-  indeed:   j => ({ title: j.title, company: j.employer?.name, location: j.location?.city || j.location?.formatted?.long || "", posted: iso(j.datePublished), url: j.url, desc: j.description?.text || "" }),
+  linkedin: j => ({ applyUrl: j.applyUrl && !/linkedin.com/.test(j.applyUrl) ? j.applyUrl : "", title: j.title, company: j.companyName, location: j.location, posted: relDays(j.postedTime) || iso(j.publishedAt), url: j.jobUrl, easyApply: j.applyType === "EASY_APPLY", poster: j.posterFullName || "", applicants: j.applicationsCount || "", desc: j.description }),
+  indeed:   j => ({ applyUrl: j.jobUrl && !/indeed./.test(j.jobUrl) ? j.jobUrl : "", title: j.title, company: j.employer?.name, location: j.location?.city || j.location?.formatted?.long || "", posted: iso(j.datePublished), url: j.url, desc: j.description?.text || "" }),
   drushimapify: j => ({ title: j.title, company: j.company, location: j.location || j.locationEnglish, posted: iso(j.postedAt || j.postedDate), url: j.portalUrl || j.applyUrl, desc: [j.description, j.requirements].filter(Boolean).join("\n") }),
   drushim:  j => j.jobCode ? NORM.drushimapify(j) : j,   // free fetcher already normalized; old Apify raw files still replay
   careers:  j => j,
@@ -182,8 +182,8 @@ for (const b of BOARDS) {
     if (!daysOk(j)) { s.days++; continue; }
     s.kept++;
     const k = normKey(j);
-    if (byKey.has(k)) { const o = byKey.get(k); if (!o.boards.includes(b)) o.boards.push(b); o.links[b] = j.url; if (!o.company || o.company === "(חסוי)") o.company = j.company; continue; }
-    byKey.set(k, { ...j, boards: [b], links: { [b]: j.url } });
+    if (byKey.has(k)) { const o = byKey.get(k); if (!o.boards.includes(b)) o.boards.push(b); o.links[b] = j.url; if (j.applyUrl && !o.links.apply) o.links.apply = j.applyUrl; if (!o.company || o.company === "(חסוי)") o.company = j.company; continue; }
+    byKey.set(k, { ...j, boards: [b], links: { [b]: j.url, ...(j.applyUrl ? { apply: j.applyUrl } : {}) } }); // apply = the company's own application page (for the send agent)
   }
 }
 let results = [...byKey.values()].sort((a, b) => (b.posted || "").localeCompare(a.posted || ""));

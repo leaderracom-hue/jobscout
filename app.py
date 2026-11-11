@@ -296,7 +296,23 @@ def mark(key, status):
     update_state(m, f"{status}: {key}")
 
 
-def card(j, arc=False):
+QSTATUS = {"queued": ("ממתין לסוכן", "#5b6474"), "ready": ("מולא · ממתין שתלחץ שלח", "#2a55c9"),
+           "needs_you": ("צריך אותך", "#9a5b00"), "unsupported": ("אתר שעוד לא נתמך", "#9a5b00"),
+           "skipped": ("נסגר בלי שליחה", "#5b6474"), "failed": ("נכשל", "#b3322f")}
+
+
+def queue_set(key, status=None):
+    """status None = take the job out of the send queue."""
+    def m(s):
+        q = s.setdefault("queue", {})
+        if status is None:
+            q.pop(key, None)
+        else:
+            q[key] = {**q.get(key, {}), "status": status, "at": dt.datetime.now(dt.timezone.utc).isoformat()}
+    update_state(m, f"queue {status or 'remove'}: {key}")
+
+
+def card(j, arc=False, queued=None):
     fit = j.get("fit")
     cls = "f-na" if fit is None else "f-hi" if fit >= 80 else "f-mid" if fit >= 60 else "f-lo"
     with st.container(border=True):
@@ -307,7 +323,13 @@ def card(j, arc=False):
             tags += '<span class="tag" style="color:#16794a">Easy Apply</span>'
         if arc:
             label = {"sent": "נשלח", "auto": "הוסר אוטומטית (ציון מתחת ל-45)"}.get(j.get("status"), "הוסר")
+            if j.get("by") == "agent":
+                label += " · ע״י הסוכן"
             tags += f'<span class="tag">{label}</span>'
+        if queued:
+            lbl, col = QSTATUS.get(queued.get("status"), (queued.get("status"), "#5b6474"))
+            note = f' — {queued["note"]}' if queued.get("note") else ""
+            tags += f'<span class="tag" style="color:{col};border-color:{col}">{lbl}{note}</span>'
         cv = j.get("cv") or ""
         lang = "עברית" if j.get("lang") == "he" else "אנגלית"
         why = j.get("why") or (f"הדירוג נכשל: {j['scoreError']}" if j.get("scoreError") else "")
@@ -322,6 +344,18 @@ def card(j, arc=False):
                 mark(k, "restore")
                 st.rerun()
             return
+        if queued:
+            c3.link_button("פתח משרה", j.get("url") or "#", use_container_width=True)
+            if c3.button("הוצא מהתור", key=f"q-{k}", use_container_width=True):
+                queue_set(k, None)
+                st.rerun()
+            if queued.get("status") in ("needs_you", "skipped", "failed", "unsupported") and c3.button("נסה שוב", key=f"qr-{k}", use_container_width=True):
+                queue_set(k, "queued")
+                st.rerun()
+            return
+        if c3.button("לשליחה ←", key=f"qa-{k}", type="primary", use_container_width=True):
+            queue_set(k, "queued")
+            st.rerun()
         c3.link_button("פתח משרה", j.get("url") or "#", use_container_width=True)
         if cv:
             if st.session_state.get("cv_open") == k:
@@ -334,7 +368,7 @@ def card(j, arc=False):
                 st.session_state.cv_open = k
                 st.rerun()
         a, b = c3.columns(2)
-        if a.button("שלחתי", key=f"s-{k}", type="primary", use_container_width=True):
+        if a.button("שלחתי", key=f"s-{k}", use_container_width=True):
             mark(k, "sent")
             st.rerun()
         if b.button("הסר", key=f"x-{k}", use_container_width=True):
@@ -368,14 +402,25 @@ r2.caption(f"~$0.10–0.20 משיכה + ~$0.0055 לכל משרה חדשה · ה�
 last = next((r for r in state.get("runs", []) if r["kw"] == kw), None)
 if last:
     at = dt.datetime.fromisoformat(last["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
-    st.caption(f"ריצה אחרונה ל-{LABEL[kw]}: {at} · {last['new']} חדשות{f" ({last['autoRemoved']} מתחת ל-45 הוסרו)" if last.get('autoRemoved') else ""} · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}")
+    auto_note = f" ({last['autoRemoved']} מתחת ל-45 הוסרו)" if last.get("autoRemoved") else ""
+    st.caption(f"ריצה אחרונה ל-{LABEL[kw]}: {at} · {last['new']} חדשות{auto_note} · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}")
 
-mine = [j for j in state["jobs"].values() if j["key"] not in state["archive"] and kw in j.get("kws", [])]
+queue = state.get("queue", {})
+mine = [j for j in state["jobs"].values() if j["key"] not in state["archive"] and j["key"] not in queue and kw in j.get("kws", [])]
+qjobs = sorted(({**state["jobs"].get(k, {"title": "?"}), "key": k, "_q": q} for k, q in queue.items() if k not in state["archive"]),
+               key=lambda j: j["_q"].get("at", ""), reverse=True)
 shown = [j for j in mine if not win or age_h(j) <= win + (0 if j.get("dayOnly") else 1)]
 shown.sort(key=(lambda j: (-(j.get("fit") if j.get("fit") is not None else -1), age_h(j))) if sort == "fit" else age_h)
 arc = sorted(({**state["jobs"].get(k, {}), **a, "key": k} for k, a in state["archive"].items()), key=lambda j: j.get("at", ""), reverse=True)
 
-t1, t2 = st.tabs([f"תוצאות ({len(shown)})", f"ארכיון ({len(arc)})"])
+t1, tq, t2 = st.tabs([f"תוצאות ({len(shown)})", f"תור שליחה ({len(qjobs)})", f"ארכיון ({len(arc)})"])
+with tq:
+    if not qjobs:
+        st.info("התור ריק. לחץ \"לשליחה ←\" על משרה בתוצאות, ואז הפעל את סוכן השליחה במחשב שלך.")
+    else:
+        st.caption("סוכן השליחה רץ במחשב שלך: `node job-engine/apply-agent/apply.mjs`. הוא ממלא את הטופס ועוצר; אתה לוחץ \"שלח\" בדפדפן שלו.")
+    for j in qjobs:
+        card(j, queued=j["_q"])
 with t1:
     if not shown:
         hidden = len(mine)
