@@ -356,7 +356,7 @@ if r1.button(f"חפש · {LABEL[kw]} · {WINDOWS[win]}", type="primary", disable
     do_search(kw, win)
     state, _ = load_state()
     used = runs_today(state)
-r2.caption(f"~$0.10 משיכה + ~$0.0055 לכל משרה חדשה · היום {used}/{cap} חיפושים"
+r2.caption(f"~$0.10–0.20 משיכה + ~$0.0055 לכל משרה חדשה · היום {used}/{cap} חיפושים"
            + (" · הגעת למכסה היומית" if used >= cap else ""))
 last = next((r for r in state.get("runs", []) if r["kw"] == kw), None)
 if last:

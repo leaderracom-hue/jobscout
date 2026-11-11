@@ -29,6 +29,8 @@ const HE = flag("he", entry.he || "");
 const LOC = flag("loc", "all");
 const DAYS = +flag("days", 7);
 const ROWS = +flag("rows", 30);
+const ROWS_DEFAULT = { linkedin: 60, alljobs: 60 };            // the two boards that filled a 30 cap on 11 Nov
+const R = b => (flag("rows", false) ? ROWS : ROWS_DEFAULT[b] || ROWS);
 const BOARDS = String(flag("free", false) ? "drushim,careers" : flag("boards", "linkedin,indeed,drushim,alljobs,careers")).split(",").map(s => s.trim()).filter(Boolean);
 const DRY = !!flag("dry", false), MATCH = !!flag("match", false), ALL_TITLES = !!flag("all-titles", false);
 const REPLAY = flag("replay", "");
@@ -38,10 +40,10 @@ const PUB = d => d <= 1 ? "r86400" : d <= 7 ? "r604800" : "r2592000";
 const NEAR = d => String([1, 3, 7, 14].find(x => x >= d) || 14);
 const half = Math.ceil(ROWS / 2);
 const ACTORS = {
-  linkedin: { id: "bebity/linkedin-jobs-scraper", perItem: 0.0015, runs: () => [{ titles: [SEARCH], locations: ["Israel"], rows: ROWS, publishedAt: PUB(DAYS) }] },
+  linkedin: { id: "bebity/linkedin-jobs-scraper", perItem: 0.0015, runs: () => [{ titles: [SEARCH], locations: ["Israel"], rows: R("linkedin"), publishedAt: PUB(DAYS) }] },
   indeed:   { id: "valig/indeed-jobs-scraper", perItem: 0.0001, start: 0.001, runs: () => [{ country: "il", title: SEARCH, limit: ROWS, datePosted: NEAR(DAYS) }] },
   drushimapify: { id: "blackfalcondata/drushim-scraper", perItem: 0.002, start: 0.01, runs: () => [{ query: SEARCH, maxResults: HE ? half : ROWS, maxPages: 3 }, ...(HE ? [{ query: HE, maxResults: half, maxPages: 3 }] : [])] },
-  alljobs:  { id: "getascraper/alljobs-scraper", perItem: 0.0018, runs: () => [{ keywords: [SEARCH, HE].filter(Boolean), maxItems: ROWS, postedWithinDays: DAYS, detailMode: "always" }] },
+  alljobs:  { id: "getascraper/alljobs-scraper", perItem: 0.0018, runs: () => [{ keywords: [SEARCH, HE].filter(Boolean), maxItems: R("alljobs"), postedWithinDays: DAYS, detailMode: "always" }] },
   jobmaster:{ id: "getascraper/jobmaster-scraper", perItem: 0.0015, runs: () => [{ searchQueries: [SEARCH, HE].filter(Boolean), maxItems: ROWS, maxItemsPerQuery: HE ? half : ROWS, sortBy: "newest" }] },
 };
 const FREE = {
@@ -50,7 +52,7 @@ const FREE = {
 };
 for (const b of BOARDS) if (!ACTORS[b] && !FREE[b]) { console.log("unknown board:", b, "— use", [...Object.keys(ACTORS), ...Object.keys(FREE)].join(",")); process.exit(1); }
 const PAID = BOARDS.filter(b => ACTORS[b]), FREEB = BOARDS.filter(b => FREE[b]);
-const estimate = () => PAID.reduce((s, b) => { const a = ACTORS[b]; const n = a.runs().length; return s + n * (a.start || 0) + ROWS * a.perItem; }, 0);
+const estimate = () => PAID.reduce((s, b) => { const a = ACTORS[b]; const n = a.runs().length; return s + n * (a.start || 0) + R(b) * a.perItem; }, 0);
 
 // ---------- normalize ----------
 const iso = v => { if (!v) return ""; if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return v + "T21:59:59.000Z"; const d = new Date(v); return isNaN(d) ? "" : d.toISOString(); }; // full time; a bare date = end of that Israeli day ("dayOnly")
@@ -126,7 +128,7 @@ async function runActor(id, input) {
 // ---------- main ----------
 const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
 const OUT = flag("out", "") ? path.resolve(flag("out")) : path.join(RUNS_DIR, "scout", `${stamp}-${kwKey.replace(/[^a-z0-9א-ת]+/g, "-")}${REPLAY ? "-replay" : ""}`);
-console.log(`\nscout: "${KW}"${HE ? ` + "${HE}"` : ""} · loc ${LOC} · ${DAYS} days · boards ${BOARDS.join(", ")} · ${ROWS} per board`);
+console.log(`\nscout: "${KW}"${HE ? ` + "${HE}"` : ""} · loc ${LOC} · ${DAYS} days · boards ${BOARDS.join(", ")} · rows ${BOARDS.filter(b => ACTORS[b]).map(b => b + " " + R(b)).join(", ")}`);
 console.log(`estimated Apify cost: $${estimate().toFixed(3)}${REPLAY ? " (replay: $0)" : ""}`);
 if (DRY) { for (const b of PAID) console.log(" ", b.padEnd(9), ACTORS[b].id, JSON.stringify(ACTORS[b].runs())); for (const b of FREEB) console.log(" ", b.padEnd(9), "free (plain HTTP)"); process.exit(0); }
 
