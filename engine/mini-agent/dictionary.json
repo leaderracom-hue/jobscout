@@ -471,5 +471,90 @@
       "salesforce",
       "אוטומציה שיווקית"
     ]
+  },
+  "gtm ai": {
+    "en": "GTM AI",
+    "he": "GTM AI",
+    "include": [
+      "gtm ai",
+      "ai gtm",
+      "gtm",
+      "go-to-market",
+      "go to market",
+      "revops",
+      "revenue operations",
+      "growth",
+      "ai sdr",
+      "ai agents",
+      "agentic",
+      "genai",
+      "llm"
+    ],
+    "requireAlso": [
+      "gtm",
+      "go-to-market",
+      "go to market",
+      "revops",
+      "revenue",
+      "growth",
+      "sales operations",
+      "ai"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-GTM-AI-Dev.pdf",
+        "Assaf-GTM-Architect.pdf"
+      ],
+      "he": [
+        "Assaf-GTM-AI-Product-V2-HE.pdf"
+      ]
+    },
+    "drushimQueries": [
+      "GTM",
+      "go to market",
+      "AI growth",
+      "revops"
+    ]
+  },
+  "gtm engineer": {
+    "en": "GTM engineer",
+    "he": "GTM engineer",
+    "allowDev": true,
+    "include": [
+      "gtm engineer",
+      "go-to-market engineer",
+      "growth engineer",
+      "revops engineer",
+      "marketing engineer",
+      "gtm automation",
+      "gtm operations",
+      "clay",
+      "revops",
+      "gtm"
+    ],
+    "requireAlso": [
+      "gtm",
+      "go-to-market",
+      "growth",
+      "revops",
+      "revenue",
+      "marketing",
+      "sales"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-GTM-AI-Dev.pdf",
+        "Assaf-GTM-Architect.pdf"
+      ],
+      "he": [
+        "Assaf-GTM-AI-Product-V2-HE.pdf"
+      ]
+    },
+    "drushimQueries": [
+      "GTM engineer",
+      "growth engineer",
+      "revops",
+      "go to market"
+    ]
   }
 }

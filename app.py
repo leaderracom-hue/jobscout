@@ -25,12 +25,13 @@ import streamlit as st
 APP = Path(__file__).parent
 IL = ZoneInfo("Asia/Jerusalem")
 GH = "https://api.github.com"
-KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm product", "ai builder", "ai automation",
+KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm product", "gtm ai", "gtm engineer", "ai builder", "ai automation",
             "automation", "crm integration", "crm automation", "ai trainer", "freelancer"]
 LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automation", "product marketing": "Product Marketing",
-         "gtm product": "GTM Product", "ai builder": "AI Builder", "ai automation": "AI Automation", "automation": "Automation",
+         "gtm product": "GTM Product", "gtm ai": "GTM AI", "gtm engineer": "GTM Engineer", "ai builder": "AI Builder", "ai automation": "AI Automation", "automation": "Automation",
          "crm integration": "CRM Integration", "crm automation": "CRM Automation", "ai trainer": "AI Trainer", "freelancer": "Freelancer"}
 WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע"}
+MIN_FIT = 45  # Assaf 11 Nov: a score under 45 goes straight to the archive ("auto")
 BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "careers": "דף קריירה"}
 
 st.set_page_config(page_title="Job Scout", page_icon=":material/work:", layout="wide")
@@ -252,7 +253,12 @@ def do_search(kw, hours):
                 st_["jobs"][k] = {"key": k, "title": j["title"], "company": j.get("company"), "location": j.get("location"),
                                   "posted": j.get("posted"), "dayOnly": bool(j.get("dayOnly")), "url": j.get("url"), "links": j.get("links"),
                                   "boards": j.get("boards", []), "easyApply": bool(j.get("easyApply")), "kws": [kw], "foundAt": now, **scores.get(k, {})}
-            st_["runs"] = [{"kw": kw, "hours": hours or None, "at": now, "found": len(found), "new": len(fresh),
+                fit = scores.get(k, {}).get("fit")
+                if fit is not None and fit < MIN_FIT:  # never shown, never returns
+                    st_["archive"][k] = {"status": "auto", "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
+                                         "urls": list((j.get("links") or {"x": j.get("url")}).values())}
+            auto = sum(1 for k, _ in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
+            st_["runs"] = [{"kw": kw, "hours": hours or None, "at": now, "found": len(found), "new": len(fresh), "autoRemoved": auto,
                             "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:199]
 
         update_state(mutate, f"run {kw} {hours or 'week'}h: {len(fresh)} new")
@@ -300,7 +306,8 @@ def card(j, arc=False):
         if j.get("easyApply"):
             tags += '<span class="tag" style="color:#16794a">Easy Apply</span>'
         if arc:
-            tags += f'<span class="tag">{"נשלח" if j.get("status") == "sent" else "הוסר"}</span>'
+            label = {"sent": "נשלח", "auto": "הוסר אוטומטית (ציון מתחת ל-45)"}.get(j.get("status"), "הוסר")
+            tags += f'<span class="tag">{label}</span>'
         cv = j.get("cv") or ""
         lang = "עברית" if j.get("lang") == "he" else "אנגלית"
         why = j.get("why") or (f"הדירוג נכשל: {j['scoreError']}" if j.get("scoreError") else "")
@@ -361,7 +368,7 @@ r2.caption(f"~$0.10–0.20 משיכה + ~$0.0055 לכל משרה חדשה · ה�
 last = next((r for r in state.get("runs", []) if r["kw"] == kw), None)
 if last:
     at = dt.datetime.fromisoformat(last["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
-    st.caption(f"ריצה אחרונה ל-{LABEL[kw]}: {at} · {last['new']} חדשות · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}")
+    st.caption(f"ריצה אחרונה ל-{LABEL[kw]}: {at} · {last['new']} חדשות{f" ({last['autoRemoved']} מתחת ל-45 הוסרו)" if last.get('autoRemoved') else ""} · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}")
 
 mine = [j for j in state["jobs"].values() if j["key"] not in state["archive"] and kw in j.get("kws", [])]
 shown = [j for j in mine if not win or age_h(j) <= win + (0 if j.get("dayOnly") else 1)]
