@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { env, RUNS_DIR } from "../env.mjs";
-import { drushim as drushimFree, careers as careersFree } from "./sources-free.mjs";
+import { drushim as drushimFree, careers as careersFree, discoverAts } from "./sources-free.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DICT = JSON.parse(fs.readFileSync(path.join(HERE, "dictionary.json"), "utf8"));
@@ -29,7 +29,7 @@ const HE = flag("he", entry.he || "");
 const LOC = flag("loc", "all");
 const DAYS = +flag("days", 7);
 const ROWS = +flag("rows", 30);
-const ROWS_DEFAULT = { linkedin: 60, alljobs: 60 };            // the two boards that filled a 30 cap on 11 Nov
+const ROWS_DEFAULT = { linkedin: 50, alljobs: 50 };            // Assaf 11 Nov: up to 50 per board
 const R = b => (flag("rows", false) ? ROWS : ROWS_DEFAULT[b] || ROWS);
 const BOARDS = String(flag("free", false) ? "drushim,careers" : flag("boards", "linkedin,indeed,drushim,alljobs,careers")).split(",").map(s => s.trim()).filter(Boolean);
 const DRY = !!flag("dry", false), MATCH = !!flag("match", false), ALL_TITLES = !!flag("all-titles", false);
@@ -40,7 +40,9 @@ const PUB = d => d <= 1 ? "r86400" : d <= 7 ? "r604800" : "r2592000";
 const NEAR = d => String([1, 3, 7, 14].find(x => x >= d) || 14);
 const half = Math.ceil(ROWS / 2);
 const ACTORS = {
-  linkedin: { id: "bebity/linkedin-jobs-scraper", perItem: 0.0015, runs: () => [{ titles: [SEARCH], locations: ["Israel"], rows: R("linkedin"), publishedAt: PUB(DAYS) }] },
+  // LinkedIn's own keyword search URL (title + description, Israel geoId, exact hours) so results match what the site shows;
+  // the old "titles" input searched job titles only and missed ~60% of what LinkedIn lists (11 Nov check: 12/30).
+  linkedin: { id: "bebity/linkedin-jobs-scraper", perItem: 0.0015, runs: () => [{ startUrls: [{ url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(SEARCH)}&location=Israel&geoId=101620260&f_TPR=r${DAYS * 86400}` }], maxRowsPerUrl: R("linkedin"), rows: R("linkedin") }] },
   indeed:   { id: "valig/indeed-jobs-scraper", perItem: 0.0001, start: 0.001, runs: () => [{ country: "il", title: SEARCH, limit: ROWS, datePosted: NEAR(DAYS) }] },
   drushimapify: { id: "blackfalcondata/drushim-scraper", perItem: 0.002, start: 0.01, runs: () => [{ query: SEARCH, maxResults: HE ? half : ROWS, maxPages: 3 }, ...(HE ? [{ query: HE, maxResults: half, maxPages: 3 }] : [])] },
   alljobs:  { id: "getascraper/alljobs-scraper", perItem: 0.0018, runs: () => [{ keywords: [SEARCH, HE].filter(Boolean), maxItems: R("alljobs"), postedWithinDays: DAYS, detailMode: "always" }] },
@@ -109,7 +111,7 @@ function titleVerdict(t) {
 }
 // Hebrew boards write vague titles ("מנהל/ת E-commerce") and put the substance in the description:
 // there a "maybe" title passes when the description names at least 2 different terms from the keyword's list.
-const DESC_BOARDS = new Set(["drushim", "drushimapify", "alljobs", "jobmaster"]);
+const DESC_BOARDS = new Set(["linkedin", "drushim", "drushimapify", "alljobs", "jobmaster"]); // linkedin too: its search matches descriptions
 const FAMILY = /שיווק|marketing|דיגיט|digital|crm|מוצר|product|לקוחות|customer|e-?commerce|growth|אוטומצ|automation|מערכות|\bai\b|בינה מלאכותית|gtm|revops|פרויקט|project|מאמן|trainer|תיוג/i;
 const core = [KW, SEARCH, HE].filter(Boolean).map(rx);
 const descOk = d => { d = String(d || ""); return core.some(r => r.test(d)) || includes.filter(r => r.test(d)).length >= 3; };
@@ -193,6 +195,23 @@ if (MATCH && results.length) {
   console.log(`match brain on ${results.length} jobs (~$${(results.length * 0.0055).toFixed(2)})…`);
   for (const j of results) { try { const a = await assess({ title: j.title, company: j.company, countries: ["Israel"], desc: j.desc }); j.fit = a.fit; j.verdict = a.verdict || ""; } catch (e) { j.fit = null; j.verdict = "error"; } }
   results.sort((a, b) => (b.fit ?? -1) - (a.fit ?? -1));
+}
+
+// grow the careers list: companies LinkedIn/Indeed showed that are not on it yet (free, up to 15 per search)
+{
+  const extraPath = process.env.JOBSCOUT_ATS_EXTRA;
+  const known = new Set([...JSON.parse(fs.readFileSync(path.join(HERE, "ats-companies.json"), "utf8")),
+    ...(extraPath && fs.existsSync(extraPath) ? JSON.parse(fs.readFileSync(extraPath, "utf8")) : [])].map(c => String(c.name).toLowerCase()));
+  const cand = new Map();
+  for (const it of raw.linkedin || []) { const n = it.companyName; if (n && !known.has(n.toLowerCase()) && !cand.has(n)) cand.set(n, { name: n, website: it.companyWebsite, applyUrl: it.applyUrl }); }
+  for (const it of raw.indeed || []) { const n = it.employer?.name; if (n && !known.has(n.toLowerCase()) && !cand.has(n)) cand.set(n, { name: n, applyUrl: it.jobUrl }); }
+  const found = cand.size ? await discoverAts([...cand.values()], { max: 15 }) : [];
+  fs.writeFileSync(path.join(OUT, "ats-new.json"), JSON.stringify(found, null, 1));
+  if (found.length && process.env.JOBENGINE_SERVER !== "1") { // on the PC: add straight to the list
+    const list = JSON.parse(fs.readFileSync(path.join(HERE, "ats-companies.json"), "utf8"));
+    fs.writeFileSync(path.join(HERE, "ats-companies.json"), JSON.stringify([...list, ...found.filter(f => !list.some(l => l.ats === f.ats && l.slug === f.slug))], null, 1));
+  }
+  if (found.length) console.log(`careers list: +${found.length} companies (${found.map(f => f.name).join(", ")})`);
 }
 
 // write

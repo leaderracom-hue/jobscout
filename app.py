@@ -26,10 +26,10 @@ APP = Path(__file__).parent
 IL = ZoneInfo("Asia/Jerusalem")
 GH = "https://api.github.com"
 KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm product", "gtm ai", "gtm engineer", "ai builder", "ai automation",
-            "automation", "crm integration", "crm automation", "ai trainer", "freelancer"]
+            "automation", "crm integration", "crm automation", "ai trainer", "freelancer", "מנהל מוצר", "מנהל מוצר אוטומציות", "אוטומציות שיווק", "מנהל פרויקט אוטומציות"]
 LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automation", "product marketing": "Product Marketing",
          "gtm product": "GTM Product", "gtm ai": "GTM AI", "gtm engineer": "GTM Engineer", "ai builder": "AI Builder", "ai automation": "AI Automation", "automation": "Automation",
-         "crm integration": "CRM Integration", "crm automation": "CRM Automation", "ai trainer": "AI Trainer", "freelancer": "Freelancer"}
+         "crm integration": "CRM Integration", "crm automation": "CRM Automation", "ai trainer": "AI Trainer", "freelancer": "Freelancer", "מנהל מוצר": "מנהל מוצר", "מנהל מוצר אוטומציות": "מנהל מוצר אוטומציות", "אוטומציות שיווק": "אוטומציות שיווק", "מנהל פרויקט אוטומציות": "מנהל פרויקט אוטומציות"}
 WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע"}
 MIN_FIT = 45  # Assaf 11 Nov: a score under 45 goes straight to the archive ("auto")
 BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "careers": "דף קריירה"}
@@ -97,6 +97,33 @@ def load_state():
     meta = r.json()
     raw = base64.b64decode(meta["content"]) if meta.get("content") else requests.get(gh_url("state.json"), headers=gh_headers(True), timeout=30).content
     return json.loads(raw), meta["sha"]
+
+
+def ats_extra_load():
+    """Careers boards the engine discovered on its own, kept in the private repo (ats-extra.json)."""
+    r = requests.get(gh_url("ats-extra.json"), headers=gh_headers(), timeout=20)
+    if r.status_code == 404:
+        return [], None
+    r.raise_for_status()
+    m = r.json()
+    return json.loads(base64.b64decode(m["content"])), m["sha"]
+
+
+def ats_extra_add(found):
+    if not found:
+        return
+    for _ in range(3):
+        cur, sha = ats_extra_load()
+        have = {(c["ats"], c["slug"]) for c in cur}
+        new = [f for f in found if (f["ats"], f["slug"]) not in have]
+        if not new:
+            return
+        body = {"message": f"careers list +{len(new)}", "content": base64.b64encode(json.dumps(cur + new, ensure_ascii=False, indent=1).encode()).decode()}
+        if sha:
+            body["sha"] = sha
+        if requests.put(gh_url("ats-extra.json"), headers=gh_headers(), json=body, timeout=30).status_code in (200, 201):
+            return
+        time.sleep(0.8)
 
 
 def update_state(mutate, message):
@@ -203,10 +230,16 @@ def archived(s, j):
 
 def do_search(kw, hours):
     days = hours // 24 if hours in (24, 48, 72) else 7
-    with st.status(f"מחפש {LABEL[kw]} · {WINDOWS[hours]}…", expanded=True) as box:
+    with st.status(f"מחפש {LABEL.get(kw, kw)} · {WINDOWS[hours]}…", expanded=True) as box:
         box.write("מושך משרות מ-LinkedIn, Indeed, AllJobs, דרושים ודפי קריירה (כ-2–3 דקות)…")
         out = tempfile.mkdtemp()
-        env = {**os.environ, "APIFY_API_TOKEN": secret("APIFY_API_TOKEN", ""), "JOBENGINE_SERVER": "1", "JOBENGINE_RUNS_DIR": tempfile.gettempdir()}
+        extra_path = Path(out, "ats-extra-in.json")
+        try:
+            extra_path.write_text(json.dumps(ats_extra_load()[0]), encoding="utf-8")
+        except Exception:
+            extra_path.write_text("[]", encoding="utf-8")
+        env = {**os.environ, "APIFY_API_TOKEN": secret("APIFY_API_TOKEN", ""), "JOBENGINE_SERVER": "1", "JOBENGINE_RUNS_DIR": tempfile.gettempdir(),
+               "JOBSCOUT_ATS_EXTRA": str(extra_path)}
         p = subprocess.run(["node", str(APP / "engine/mini-agent/scout.mjs"), kw, "--out", out, "--days", str(days)],
                            cwd=str(APP / "engine"), env=env, capture_output=True, text=True, timeout=900)
         if p.returncode != 0:
@@ -214,6 +247,11 @@ def do_search(kw, hours):
             st.code((p.stdout + p.stderr)[-1500:])
             return
         found = json.loads(Path(out, "results-full.json").read_text(encoding="utf-8"))
+        stats = json.loads(Path(out, "results.json").read_text(encoding="utf-8")).get("stats", {})  # per source: pulled / dropped / kept
+        try:  # careers boards found during this search → private repo, used from the next search on
+            ats_extra_add(json.loads(Path(out, "ats-new.json").read_text(encoding="utf-8")))
+        except Exception:
+            pass
         spent = re.search(r'"spentUsd":([\d.]+)', p.stdout)
         s, _ = load_state()
         fresh, seen_again = [], {}
@@ -258,7 +296,7 @@ def do_search(kw, hours):
                     st_["archive"][k] = {"status": "auto", "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
                                          "urls": list((j.get("links") or {"x": j.get("url")}).values())}
             auto = sum(1 for k, _ in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
-            st_["runs"] = [{"kw": kw, "hours": hours or None, "at": now, "found": len(found), "new": len(fresh), "autoRemoved": auto,
+            st_["runs"] = [{"kw": kw, "hours": hours or None, "at": now, "found": len(found), "new": len(fresh), "autoRemoved": auto, "stats": stats,
                             "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:199]
 
         update_state(mutate, f"run {kw} {hours or 'week'}h: {len(fresh)} new")
@@ -386,27 +424,39 @@ if top_r.button("יציאה"):
     st.session_state.clear()
     st.rerun()
 
-kw = st.pills("מילת חיפוש", KEYWORDS, format_func=lambda k: LABEL[k], default=st.session_state.get("kw", "marketing automation"), key="kw_pick") or "marketing automation"
-st.session_state.kw = kw
+picked = st.pills("מילות חיפוש (אפשר כמה)", KEYWORDS, format_func=lambda k: LABEL.get(k, k), selection_mode="multi",
+                  default=st.session_state.get("kws_picked", ["marketing automation"]), key="kw_pick") or []
+free = st.text_input("מילים נוספות (מופרדות בפסיק)", key="kw_free", placeholder="למשל: lifecycle marketing, מנהל CRM")
+kws = list(dict.fromkeys(list(picked) + [w.strip().lower() for w in free.split(",") if w.strip()]))
+st.session_state.kws_picked = list(picked)
 c1, c2 = st.columns(2)
 win = c1.segmented_control("פורסם ב-", list(WINDOWS), format_func=lambda h: WINDOWS[h], default=48, key="win") or 0
 sort = c2.segmented_control("מיון", ["fit", "new"], format_func=lambda s: "התאמה" if s == "fit" else "הכי חדש", default="fit", key="sort") or "fit"
 
+left = cap - used
+names = " + ".join(LABEL.get(k, k) for k in kws) or "בחר מילה"
 r1, r2 = st.columns([2, 3], vertical_alignment="center")
-if r1.button(f"חפש · {LABEL[kw]} · {WINDOWS[win]}", type="primary", disabled=used >= cap, use_container_width=True):
-    do_search(kw, win)
+if r1.button(f"חפש · {names} · {WINDOWS[win]}", type="primary", disabled=not kws or len(kws) > left, use_container_width=True):
+    for k in kws:  # one search per keyword, one after the other; each counts toward the daily cap
+        do_search(k, win)
     state, _ = load_state()
     used = runs_today(state)
-r2.caption(f"~$0.10–0.20 משיכה + ~$0.0055 לכל משרה חדשה · היום {used}/{cap} חיפושים"
-           + (" · הגעת למכסה היומית" if used >= cap else ""))
-last = next((r for r in state.get("runs", []) if r["kw"] == kw), None)
-if last:
+r2.caption(f"~$0.15–0.30 לכל מילת חיפוש · נבחרו {len(kws)} · היום {used}/{cap} חיפושים"
+           + (" · יותר מילים ממה שנשאר היום" if len(kws) > cap - used else ""))
+for k in kws:
+    last = next((r for r in state.get("runs", []) if r["kw"] == k), None)
+    if not last:
+        continue
     at = dt.datetime.fromisoformat(last["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
     auto_note = f" ({last['autoRemoved']} מתחת ל-45 הוסרו)" if last.get("autoRemoved") else ""
-    st.caption(f"ריצה אחרונה ל-{LABEL[kw]}: {at} · {last['new']} חדשות{auto_note} · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}")
+    per = " · ".join(f"{BOARD.get(b, b)} {v.get('kept', 0)}/{v.get('pulled', 0)}" for b, v in (last.get("stats") or {}).items())
+    st.caption(f"ריצה אחרונה ל-{LABEL.get(k, k)}: {at} · {last['new']} חדשות{auto_note} · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}"
+               + (f"  \nלפי מקור (נכנסו/נמשכו): {per}" if per else ""))
+last = any(r["kw"] in kws for r in state.get("runs", []))
+kw = kws[0] if kws else "marketing automation"
 
 queue = state.get("queue", {})
-mine = [j for j in state["jobs"].values() if j["key"] not in state["archive"] and j["key"] not in queue and kw in j.get("kws", [])]
+mine = [j for j in state["jobs"].values() if j["key"] not in state["archive"] and j["key"] not in queue and any(k in j.get("kws", []) for k in kws)]
 qjobs = sorted(({**state["jobs"].get(k, {"title": "?"}), "key": k, "_q": q} for k, q in queue.items() if k not in state["archive"]),
                key=lambda j: j["_q"].get("at", ""), reverse=True)
 shown = [j for j in mine if not win or age_h(j) <= win + (0 if j.get("dayOnly") else 1)]
@@ -425,7 +475,7 @@ with t1:
     if not shown:
         hidden = len(mine)
         st.info(f"אין משרות מה-{WINDOWS[win]} האחרונות. {hidden} ישנות יותר מוסתרות." if hidden
-                else (f"אין משרות פתוחות ל-{LABEL[kw]}." if last else f"עוד לא חיפשת {LABEL[kw]}. החיפוש ירוץ רק כשתלחץ \"חפש\"."))
+                else ("אין משרות פתוחות למילים שבחרת." if last else "עוד לא חיפשת את המילים האלה. החיפוש ירוץ רק כשתלחץ \"חפש\"."))
     for j in shown:
         card(j)
     if shown and len(mine) > len(shown):

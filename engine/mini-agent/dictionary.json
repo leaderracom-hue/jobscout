@@ -593,5 +593,165 @@
       "revops",
       "go to market"
     ]
+  },
+  "מנהל מוצר": {
+    "en": "product manager",
+    "he": "מנהל מוצר",
+    "include": [
+      "product manager",
+      "product owner",
+      "head of product",
+      "group product manager",
+      "מנהל מוצר",
+      "מנהלת מוצר",
+      "מנהל/ת מוצר",
+      "פרודקט"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-SaaS-Product-Manager.pdf",
+        "Assaf-AI-Product V2.pdf",
+        "Assaf-Technical-PM.pdf"
+      ],
+      "he": [
+        "Assaf-Product-Manager-HE.pdf",
+        "Assaf-Product-Manager-Generic-HE.pdf",
+        "Assaf-AI-Product-V2-HE.pdf"
+      ]
+    },
+    "drushimQueries": [
+      "מנהל/ת מוצר",
+      "product manager",
+      "מנהל מוצר דיגיטל"
+    ]
+  },
+  "מנהל מוצר אוטומציות": {
+    "en": "automation product manager",
+    "he": "מנהל מוצר אוטומציות",
+    "include": [
+      "product manager",
+      "product owner",
+      "automation",
+      "אוטומצ",
+      "מנהל מוצר",
+      "מנהל/ת מוצר",
+      "platform",
+      "internal tools",
+      "crm"
+    ],
+    "requireAlso": [
+      "product",
+      "מוצר",
+      "automation",
+      "אוטומצ",
+      "owner"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-Business-Systems-Automation.pdf",
+        "Assaf-AI-Builder-PM.pdf",
+        "Assaf-SaaS-Product-Manager.pdf"
+      ],
+      "he": [
+        "Assaf-Business-Systems-Automation-HE.pdf",
+        "Assaf-AI-Builder-PM-HE.pdf",
+        "Assaf-Product-Manager-HE.pdf"
+      ]
+    },
+    "drushimQueries": [
+      "מנהל מוצר",
+      "אוטומציות",
+      "product manager automation",
+      "מערכות"
+    ]
+  },
+  "אוטומציות שיווק": {
+    "he": "אוטומציות שיווק",
+    "include": [
+      "marketing automation",
+      "אוטומציה שיווקית",
+      "אוטומציות שיווק",
+      "מערכות שיווק",
+      "marketing operations",
+      "marketing ops",
+      "lifecycle",
+      "retention",
+      "crm",
+      "revops",
+      "gtm operations",
+      "hubspot",
+      "marketo",
+      "braze",
+      "salesforce marketing",
+      "pardot",
+      "iterable",
+      "unica",
+      "אוטומציות"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-Marketing-Automation.pdf",
+        "Assaf-Marketing-Automation-CRM-EN-v2.pdf",
+        "Assaf-CRM-Implementation.pdf",
+        "Assaf-Marketing-Cloud-Consultant.pdf"
+      ],
+      "he": [
+        "Assaf-Marketing-Automation-HE.pdf",
+        "Assaf-Marketing-Automation-CRM-HE.pdf",
+        "Assaf-CRM-Implementation-HE.pdf"
+      ]
+    },
+    "drushimQueries": [
+      "אוטומציות",
+      "CRM",
+      "מערכות שיווק",
+      "דיוור",
+      "marketing operations"
+    ],
+    "en": "marketing automation"
+  },
+  "מנהל פרויקט אוטומציות": {
+    "en": "automation project manager",
+    "he": "מנהל פרויקט אוטומציות",
+    "include": [
+      "project manager",
+      "program manager",
+      "delivery manager",
+      "implementation",
+      "automation",
+      "אוטומצ",
+      "מנהל פרויקט",
+      "מנהלת פרויקט",
+      "מנהל/ת פרויקט",
+      "pmo"
+    ],
+    "requireAlso": [
+      "project",
+      "program",
+      "פרויקט",
+      "delivery",
+      "implementation",
+      "הטמעה",
+      "automation",
+      "אוטומצ"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-Project-Manager.pdf",
+        "Assaf-Tech-Project-Manager.pdf",
+        "Assaf-Business-Systems-Automation.pdf"
+      ],
+      "he": [
+        "Assaf-Project-Manager-v2-HE.pdf",
+        "Assaf-Tech-Project-Manager-HE.pdf",
+        "Assaf-Business-Systems-Automation-HE.pdf"
+      ]
+    },
+    "drushimQueries": [
+      "מנהל/ת פרויקטים",
+      "אוטומציות",
+      "project manager",
+      "הטמעה"
+    ]
   }
 }

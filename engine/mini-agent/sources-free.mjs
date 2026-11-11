@@ -62,7 +62,8 @@ async function ashby(c) {
 const FETCH = { comeet, greenhouse, lever, ashby };
 
 export async function careers({ concurrency = 6 } = {}) {
-  const list = JSON.parse(fs.readFileSync(path.join(HERE, "ats-companies.json"), "utf8")).filter(c => FETCH[c.ats]);
+  const extra = process.env.JOBSCOUT_ATS_EXTRA && fs.existsSync(process.env.JOBSCOUT_ATS_EXTRA) ? JSON.parse(fs.readFileSync(process.env.JOBSCOUT_ATS_EXTRA, "utf8")) : [];
+  const seen = new Set(); const list = [...JSON.parse(fs.readFileSync(path.join(HERE, "ats-companies.json"), "utf8")), ...extra].filter(c => FETCH[c.ats] && !seen.has(c.ats + c.slug) && seen.add(c.ats + c.slug));
   const out = []; const log = { boards: list.length, ok: 0, failed: 0, jobsAll: 0 };
   const queue = [...list];
   await Promise.all(Array.from({ length: concurrency }, async () => {
@@ -76,3 +77,33 @@ export async function careers({ concurrency = 6 } = {}) {
   log.jobsIsrael = out.length;
   return { items: out, log };
 }
+
+// ---------- grow the careers list: find the careers system of companies seen in a search ----------
+const ATS_RX = [
+  ["comeet", /comeet\.(?:com|co)\/jobs\/([a-z0-9_-]+)\/([0-9A-F]{2}\.[0-9A-F]{3})/i],
+  ["greenhouse", /(?:boards|job-boards)(?:\.eu)?\.greenhouse\.io\/(?:embed\/job_board\?for=)?([a-z0-9_-]+)/i],
+  ["lever", /jobs\.(?:eu\.)?lever\.co\/([a-z0-9_.-]+)/i],
+  ["ashby", /jobs\.ashbyhq\.com\/([a-z0-9_.%-]+)/i],
+];
+const BAD_SLUG = new Set(["embed", "jobs", "api", "v1", "j", "careers", "share"]);
+export function sniffAts(text) {
+  for (const [ats, rx] of ATS_RX) { const m = String(text || "").match(rx); if (m && !BAD_SLUG.has(m[1].toLowerCase())) return { ats, slug: decodeURIComponent(m[1]).toLowerCase(), uid: m[2] }; }
+  return null;
+}
+// companies = [{ name, website?, applyUrl? }] not on the list yet. Free: the apply link first, then the website and its /careers page.
+export async function discoverAts(companies, { max = 15 } = {}) {
+  const found = [], queue = companies.slice(0, max);
+  await Promise.all(Array.from({ length: 5 }, async () => {
+    for (;;) {
+      const c = queue.shift(); if (!c) return;
+      let hit = sniffAts(c.applyUrl);
+      if (!hit && /^https?:/.test(c.website || "")) {
+        const base = c.website.replace(/\/+$/, "");
+        for (const p of ["", "/careers", "/jobs"]) { const t = await get(base + p, 8000); hit = t && sniffAts(t); if (hit) break; }
+      }
+      if (hit) found.push({ name: c.name, ...hit });
+    }
+  }));
+  return found;
+}
+
