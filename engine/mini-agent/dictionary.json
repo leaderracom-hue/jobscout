@@ -139,7 +139,6 @@
     "include": [
       "ai builder",
       "ai automation",
-      "ai engineer",
       "ai solutions",
       "agentic",
       "agents",
@@ -154,7 +153,11 @@
       "מפתח/ת אוטומציות",
       "אוטומציות ai",
       "סוכני ai",
-      "בינה מלאכותית"
+      "בינה מלאכותית",
+      "forward deployed",
+      "ai product",
+      "פתרונות ai",
+      "פתרונות בינה מלאכותית"
     ],
     "allowDev": true,
     "cv": {
@@ -172,6 +175,40 @@
       "AI agents",
       "n8n",
       "אוטומציות AI"
+    ],
+    "blockTitles": [
+      "ai engineer",
+      "genai engineer",
+      "llm engineer",
+      "developer",
+      "מפתח",
+      "מפתחת",
+      "מפתח/ת",
+      "מהנדס",
+      "מהנדסת",
+      "מהנדס/ת"
+    ],
+    "keepIfTitle": [
+      "solutions",
+      "automation",
+      "forward deployed",
+      "builder",
+      "product",
+      "אוטומצ",
+      "פתרונות"
+    ],
+    "hardBlockTitles": [
+      "software engineer",
+      "full stack",
+      "fullstack",
+      "backend",
+      "frontend",
+      "front end",
+      "machine learning engineer",
+      "ml engineer",
+      "data engineer",
+      "devops",
+      "sre"
     ]
   },
   "ai trainer": {

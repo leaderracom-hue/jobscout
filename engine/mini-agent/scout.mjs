@@ -91,6 +91,7 @@ const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\//g, "\\/?")
 const rx = s => new RegExp(/^[\x00-\x7f]+$/.test(s) ? `\\b${esc(s)}\\b` : esc(s), "i"); // Latin terms on word edges ("unica" must not hit "Communications")
 const includes = [KW, SEARCH, HE, ...(entry.include || [])].filter(Boolean).map(rx);
 const requireAlso = (entry.requireAlso || []).map(rx);
+const blockTitles = (entry.blockTitles || []).map(rx), keepIfTitle = (entry.keepIfTitle || []).map(rx), hardBlock = (entry.hardBlockTitles || []).map(rx);
 const kwWords = kwKey.split(/\s+/).filter(w => w.length > 2);
 const EXCLUDE = /\bqa\b|בודק|בדיקות|לוגיסט|תעשייתי|מכשור|בקרה|הדרכה|נהג|מחסן|טכנאי|qa automation|test automation/i;
 const EXCLUDE_DEV = /מפתח|פיתוח|developer|engineer/i;           // off for keywords that want builders (allowDev)
@@ -100,6 +101,8 @@ function titleVerdict(t) {
   if (exclusionApplies && EXCLUDE.test(t)) return "out";
   if (exclusionApplies && !entry.allowDev && EXCLUDE_DEV.test(t)) return "out";
   if (requireAlso.length && !requireAlso.some(r => r.test(t))) return "out";
+  if (hardBlock.some(r => r.test(t))) return "out";
+  if (blockTitles.some(r => r.test(t)) && !keepIfTitle.some(r => r.test(t))) return "out"; // e.g. AI Builder: pure engineering roles, dropped before paying to score them
   if (includes.some(r => r.test(t))) return "in";
   if (kwWords.length > 1 && kwWords.every(w => t.toLowerCase().includes(w))) return "in";
   return "maybe"; // not excluded, just not named in the title
