@@ -1,0 +1,278 @@
+[
+ {
+  "name": "brandlight",
+  "ats": "ashby",
+  "slug": "brandlight"
+ },
+ {
+  "name": "camunda",
+  "ats": "ashby",
+  "slug": "camunda"
+ },
+ {
+  "name": "Finout",
+  "ats": "ashby",
+  "slug": "finout",
+  "guessed": true
+ },
+ {
+  "name": "Hud",
+  "ats": "ashby",
+  "slug": "hud",
+  "guessed": true
+ },
+ {
+  "name": "Lemonade",
+  "ats": "ashby",
+  "slug": "lemonade",
+  "guessed": true
+ },
+ {
+  "name": "Matrix",
+  "ats": "ashby",
+  "slug": "matrix",
+  "guessed": true
+ },
+ {
+  "name": "monday.com",
+  "ats": "ashby",
+  "slug": "monday.com"
+ },
+ {
+  "name": "Paragon",
+  "ats": "ashby",
+  "slug": "paragon",
+  "guessed": true
+ },
+ {
+  "name": "SeatPick",
+  "ats": "ashby",
+  "slug": "seatpick",
+  "guessed": true
+ },
+ {
+  "name": "Vega",
+  "ats": "ashby",
+  "slug": "vega",
+  "guessed": true
+ },
+ {
+  "name": "Bond",
+  "ats": "comeet",
+  "slug": "bond",
+  "uid": "D2.00B"
+ },
+ {
+  "name": "Cognyte",
+  "ats": "comeet",
+  "slug": "cognyte",
+  "uid": "F2.009"
+ },
+ {
+  "name": "enlightenergy",
+  "ats": "comeet",
+  "slug": "enlightenergy",
+  "uid": "99.006"
+ },
+ {
+  "name": "guesty",
+  "ats": "comeet",
+  "slug": "guesty",
+  "uid": "10.000"
+ },
+ {
+  "name": "helfy",
+  "ats": "comeet",
+  "slug": "helfy",
+  "uid": "3A.008"
+ },
+ {
+  "name": "Infinidat",
+  "ats": "comeet",
+  "slug": "infinidat",
+  "uid": "D6.003"
+ },
+ {
+  "name": "Minute",
+  "ats": "comeet",
+  "slug": "minute",
+  "uid": "45.00A"
+ },
+ {
+  "name": "Navina",
+  "ats": "comeet",
+  "slug": "navina",
+  "uid": "E6.00C"
+ },
+ {
+  "name": "pango",
+  "ats": "comeet",
+  "slug": "pango",
+  "uid": "59.002"
+ },
+ {
+  "name": "realplay",
+  "ats": "comeet",
+  "slug": "realplay",
+  "uid": "9A.003"
+ },
+ {
+  "name": "silverfort",
+  "ats": "comeet",
+  "slug": "silverfort",
+  "uid": "54.007"
+ },
+ {
+  "name": "Voyantis",
+  "ats": "comeet",
+  "slug": "voyantis",
+  "uid": "86.00B"
+ },
+ {
+  "name": "Zenity",
+  "ats": "comeet",
+  "slug": "zenity",
+  "uid": "19.000"
+ },
+ {
+  "name": "autods",
+  "ats": "greenhouse",
+  "slug": "autods"
+ },
+ {
+  "name": "Canonical",
+  "ats": "greenhouse",
+  "slug": "canonical"
+ },
+ {
+  "name": "canonical_managed_posts",
+  "ats": "greenhouse",
+  "slug": "canonical_managed_posts"
+ },
+ {
+  "name": "Connecteam",
+  "ats": "greenhouse",
+  "slug": "connecteam",
+  "guessed": true
+ },
+ {
+  "name": "Duda",
+  "ats": "greenhouse",
+  "slug": "duda",
+  "guessed": true
+ },
+ {
+  "name": "Eleos Health",
+  "ats": "greenhouse",
+  "slug": "eleoshealth",
+  "guessed": true
+ },
+ {
+  "name": "Encore AI",
+  "ats": "greenhouse",
+  "slug": "encore",
+  "guessed": true
+ },
+ {
+  "name": "Guidde",
+  "ats": "greenhouse",
+  "slug": "guidde"
+ },
+ {
+  "name": "JFrog",
+  "ats": "greenhouse",
+  "slug": "jfrog",
+  "guessed": true
+ },
+ {
+  "name": "MyHeritage",
+  "ats": "greenhouse",
+  "slug": "myheritage",
+  "guessed": true
+ },
+ {
+  "name": "Oscar",
+  "ats": "greenhouse",
+  "slug": "oscar",
+  "guessed": true
+ },
+ {
+  "name": "Riskified",
+  "ats": "greenhouse",
+  "slug": "riskified",
+  "guessed": true
+ },
+ {
+  "name": "Taboola",
+  "ats": "greenhouse",
+  "slug": "taboola",
+  "guessed": true
+ },
+ {
+  "name": "TSG",
+  "ats": "greenhouse",
+  "slug": "tsg",
+  "guessed": true
+ },
+ {
+  "name": "Vega",
+  "ats": "greenhouse",
+  "slug": "vega",
+  "guessed": true
+ },
+ {
+  "name": "VYBS",
+  "ats": "greenhouse",
+  "slug": "vybs",
+  "guessed": true
+ },
+ {
+  "name": "Wolt",
+  "ats": "greenhouse",
+  "slug": "wolt",
+  "guessed": true
+ },
+ {
+  "name": "airslate",
+  "ats": "lever",
+  "slug": "airslate"
+ },
+ {
+  "name": "Avero",
+  "ats": "lever",
+  "slug": "avero",
+  "guessed": true
+ },
+ {
+  "name": "BioCatch",
+  "ats": "lever",
+  "slug": "biocatch",
+  "guessed": true
+ },
+ {
+  "name": "Cloudinary",
+  "ats": "lever",
+  "slug": "cloudinary",
+  "guessed": true
+ },
+ {
+  "name": "Deloitte",
+  "ats": "lever",
+  "slug": "deloitte"
+ },
+ {
+  "name": "logz",
+  "ats": "lever",
+  "slug": "logz"
+ },
+ {
+  "name": "oktopost",
+  "ats": "lever",
+  "slug": "oktopost"
+ },
+ {
+  "name": "Parallel Wireless",
+  "ats": "lever",
+  "slug": "parallelwireless"
+ }
+]

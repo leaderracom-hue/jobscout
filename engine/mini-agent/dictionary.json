@@ -1,0 +1,408 @@
+{
+  "_note": "keyword (lowercase) -> search term (en = what the boards get, default the keyword), Hebrew term for the Hebrew boards, title words that count as a match, optional requireAlso (title must ALSO hit one of these), and the CV pool per language (file names in Desktop\\Resume\\English and \\Hebrew; empty = any CV). --he overrides 'he'.",
+  "product ai": {
+    "en": "AI product manager",
+    "he": "מנהל מוצר AI",
+    "include": [
+      "ai product",
+      "product manager",
+      "product owner",
+      "head of product",
+      "genai",
+      "llm",
+      "מנהל מוצר",
+      "מנהלת מוצר",
+      "מנהל/ת מוצר",
+      "פרודקט"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-AI-Product V2.pdf",
+        "Assaf-Data-AI-PM.pdf",
+        "Assaf-SaaS-Product-Manager.pdf"
+      ],
+      "he": [
+        "Assaf-AI-Product-V2-HE.pdf",
+        "Assaf-Data-AI-PM-HE.pdf",
+        "Assaf-Product-Manager-HE.pdf"
+      ]
+    }
+  },
+  "marketing automation": {
+    "he": "אוטומציה שיווקית",
+    "include": [
+      "marketing automation",
+      "אוטומציה שיווקית",
+      "אוטומציות שיווק",
+      "מערכות שיווק",
+      "marketing operations",
+      "marketing ops",
+      "lifecycle",
+      "retention",
+      "crm",
+      "revops",
+      "gtm operations",
+      "hubspot",
+      "marketo",
+      "braze",
+      "salesforce marketing",
+      "pardot",
+      "iterable",
+      "unica",
+      "אוטומציות"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-Marketing-Automation.pdf",
+        "Assaf-Marketing-Automation-CRM-EN-v2.pdf",
+        "Assaf-CRM-Implementation.pdf",
+        "Assaf-Marketing-Cloud-Consultant.pdf"
+      ],
+      "he": [
+        "Assaf-Marketing-Automation-HE.pdf",
+        "Assaf-Marketing-Automation-CRM-HE.pdf",
+        "Assaf-CRM-Implementation-HE.pdf"
+      ]
+    }
+  },
+  "product marketing": {
+    "he": "מנהל שיווק מוצר",
+    "include": [
+      "product marketing",
+      "pmm",
+      "growth marketing",
+      "go-to-market",
+      "שיווק מוצר",
+      "מנהל/ת שיווק מוצר",
+      "מנהל שיווק מוצר"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-Growth-PMM-EN.pdf",
+        "Assaf-Growth-PMM.pdf"
+      ],
+      "he": [
+        "Assaf-Marketing-Automation-HE.pdf"
+      ]
+    }
+  },
+  "gtm product": {
+    "en": "GTM",
+    "he": "GTM",
+    "include": [
+      "gtm",
+      "go-to-market",
+      "go to market",
+      "revops",
+      "revenue operations",
+      "growth product",
+      "gtm engineer",
+      "gtm operations"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-GTM-Architect.pdf",
+        "Assaf-GTM-AI-Dev.pdf"
+      ],
+      "he": [
+        "Assaf-GTM-AI-Product-V2-HE.pdf"
+      ]
+    }
+  },
+  "ai builder": {
+    "en": "AI agents",
+    "he": "סוכני AI",
+    "include": [
+      "ai builder",
+      "ai automation",
+      "ai engineer",
+      "ai solutions",
+      "agentic",
+      "agents",
+      "llm",
+      "genai",
+      "n8n",
+      "make.com",
+      "automation specialist",
+      "automation developer",
+      "no-code",
+      "low-code",
+      "מפתח/ת אוטומציות",
+      "אוטומציות ai",
+      "סוכני ai",
+      "בינה מלאכותית"
+    ],
+    "allowDev": true,
+    "cv": {
+      "en": [
+        "Assaf-AI-Builder-PM.pdf",
+        "Assaf-AI-Builder-Research-Data-EN.pdf"
+      ],
+      "he": [
+        "Assaf-AI-Builder-PM-HE.pdf",
+        "Assaf-AI-Builder-Research-Data-HE.pdf"
+      ]
+    }
+  },
+  "ai trainer": {
+    "he": "מאמן AI",
+    "include": [
+      "ai trainer",
+      "ai training",
+      "ai tutor",
+      "annotation",
+      "annotator",
+      "data labeling",
+      "prompt",
+      "rlhf",
+      "llm evaluat",
+      "מאמן",
+      "מאמנת",
+      "מתייג",
+      "תיוג"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-AI-Trainer.pdf"
+      ],
+      "he": [
+        "Assaf-AI-Trainer-HE.pdf"
+      ]
+    }
+  },
+  "freelancer": {
+    "en": "freelance",
+    "he": "פרילנס",
+    "include": [
+      "freelance",
+      "freelancer",
+      "contract",
+      "contractor",
+      "פרילנס",
+      "פרילנסר",
+      "פרויקטלי",
+      "משרה חלקית",
+      "part-time",
+      "part time",
+      "fractional",
+      "consultant",
+      "יועץ",
+      "יועצת"
+    ],
+    "requireAlso": [
+      "product",
+      "ai",
+      "automation",
+      "marketing",
+      "crm",
+      "gtm",
+      "growth",
+      "n8n",
+      "hubspot",
+      "salesforce",
+      "data",
+      "project",
+      "מוצר",
+      "אוטומצי",
+      "שיווק",
+      "דיגיטל",
+      "בינה מלאכותית",
+      "פרויקט",
+      "מערכות"
+    ],
+    "noExclude": true,
+    "cv": {
+      "en": [],
+      "he": []
+    }
+  },
+  "product manager": {
+    "he": "מנהל מוצר",
+    "include": [
+      "product manager",
+      "product owner",
+      "head of product",
+      "מנהל מוצר",
+      "מנהלת מוצר",
+      "מנהל/ת מוצר",
+      "פרודקט"
+    ]
+  },
+  "project manager": {
+    "he": "מנהל פרויקטים",
+    "include": [
+      "project manager",
+      "program manager",
+      "pmo",
+      "מנהל פרויקט",
+      "מנהלת פרויקט",
+      "מנהל/ת פרויקט"
+    ]
+  },
+  "crm": {
+    "he": "CRM",
+    "include": [
+      "crm",
+      "lifecycle",
+      "retention",
+      "marketing automation",
+      "אוטומציה שיווקית"
+    ]
+  },
+  "ai automation": {
+    "en": "AI automation",
+    "he": "אוטומציה AI",
+    "allowDev": true,
+    "include": [
+      "ai automation",
+      "automation",
+      "agentic",
+      "agents",
+      "llm",
+      "genai",
+      "n8n",
+      "make.com",
+      "zapier",
+      "workflow",
+      "אוטומציה",
+      "אוטומציות",
+      "בינה מלאכותית",
+      "סוכני ai"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-AI-Builder-PM.pdf",
+        "Assaf-Business-Systems-Automation.pdf",
+        "Assaf-AI-Builder-Research-Data-EN.pdf"
+      ],
+      "he": [
+        "Assaf-AI-Builder-PM-HE.pdf",
+        "Assaf-Business-Systems-Automation-HE.pdf"
+      ]
+    }
+  },
+  "automation": {
+    "en": "automation",
+    "he": "אוטומציות",
+    "allowDev": true,
+    "include": [
+      "automation specialist",
+      "automation manager",
+      "automation developer",
+      "automation expert",
+      "business automation",
+      "process automation",
+      "workflow automation",
+      "marketing automation",
+      "ai automation",
+      "rpa",
+      "n8n",
+      "make.com",
+      "zapier",
+      "power automate",
+      "no-code",
+      "low-code",
+      "אוטומציות",
+      "אוטומציה עסקית",
+      "מומחה אוטומציה",
+      "מומחה/ית אוטומציה",
+      "מפתח/ת אוטומציות"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-Business-Systems-Automation.pdf",
+        "Assaf-AI-Builder-PM.pdf",
+        "Assaf-Marketing-Automation.pdf"
+      ],
+      "he": [
+        "Assaf-Business-Systems-Automation-HE.pdf",
+        "Assaf-AI-Builder-PM-HE.pdf",
+        "Assaf-Marketing-Automation-HE.pdf"
+      ]
+    }
+  },
+  "crm integration": {
+    "en": "CRM integration",
+    "he": "הטמעת CRM",
+    "include": [
+      "crm",
+      "salesforce",
+      "hubspot",
+      "dynamics",
+      "zoho",
+      "monday crm",
+      "integration",
+      "implementation",
+      "crm consultant",
+      "crm manager",
+      "הטמעה",
+      "הטמעת",
+      "אינטגרציה",
+      "אינטגרציות",
+      "מערכות מידע"
+    ],
+    "requireAlso": [
+      "crm",
+      "salesforce",
+      "hubspot",
+      "dynamics",
+      "zoho",
+      "priority",
+      "פריוריטי",
+      "מערכות"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-CRM-Implementation.pdf",
+        "Assaf-Marketing-Automation-CRM-EN-v2.pdf",
+        "Assaf-Business-Systems-Automation.pdf"
+      ],
+      "he": [
+        "Assaf-CRM-Implementation-HE.pdf",
+        "Assaf-Marketing-Automation-CRM-HE.pdf",
+        "Assaf-Business-Systems-Automation-HE.pdf"
+      ]
+    }
+  },
+  "crm automation": {
+    "en": "CRM automation",
+    "he": "אוטומציה CRM",
+    "include": [
+      "crm automation",
+      "crm",
+      "hubspot",
+      "salesforce",
+      "marketing automation",
+      "lifecycle",
+      "retention",
+      "revops",
+      "automation",
+      "אוטומציה",
+      "אוטומציות"
+    ],
+    "requireAlso": [
+      "crm",
+      "hubspot",
+      "salesforce",
+      "lifecycle",
+      "retention",
+      "revops",
+      "marketing automation",
+      "אוטומציה שיווקית",
+      "dynamics",
+      "zoho"
+    ],
+    "cv": {
+      "en": [
+        "Assaf-Marketing-Automation-CRM-EN-v2.pdf",
+        "Assaf-CRM-Implementation.pdf",
+        "Assaf-Marketing-Automation.pdf"
+      ],
+      "he": [
+        "Assaf-Marketing-Automation-CRM-HE.pdf",
+        "Assaf-CRM-Implementation-HE.pdf",
+        "Assaf-Marketing-Automation-HE.pdf"
+      ]
+    }
+  }
+}
