@@ -109,6 +109,12 @@ function titleVerdict(t) {
   if (kwWords.length > 1 && kwWords.every(w => t.toLowerCase().includes(w))) return "in";
   return "maybe"; // not excluded, just not named in the title
 }
+// cyber / security: title words, company names, LinkedIn industry (lists in dictionary.json _exclude)
+const EXC = DICT._exclude || { titles: [], industries: [], companies: [] };
+const reEsc = w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const wordRx = list => list.length ? new RegExp(list.map(w => /^[\x00-\x7f]+$/.test(w) ? `\\b${reEsc(w)}\\b` : reEsc(w)).join("|"), "i") : /$^/; // Latin words on word edges
+const CYBER_T = wordRx(EXC.titles), CYBER_C = wordRx(EXC.companies), CYBER_I = wordRx(EXC.industries);
+const isCyber = (j, it = {}) => CYBER_T.test(j.title || "") || CYBER_C.test(j.company || "") || CYBER_I.test([it.sector, ...(it.companyIndustries ? [].concat(it.companyIndustries) : [])].join(" "));
 // Hebrew boards write vague titles ("מנהל/ת E-commerce") and put the substance in the description:
 // there a "maybe" title passes when the description names at least 2 different terms from the keyword's list.
 const DESC_BOARDS = new Set(["linkedin", "drushim", "drushimapify", "alljobs", "jobmaster"]); // linkedin too: its search matches descriptions
@@ -177,11 +183,12 @@ fs.mkdirSync(OUT, { recursive: true });
 // normalize + filter + dedupe
 const stats = {}; const byKey = new Map();
 for (const b of BOARDS) {
-  const items = raw[b] || []; const s = stats[b] = { pulled: items.length, title: 0, loc: 0, days: 0, kept: 0 };
+  const items = raw[b] || []; const s = stats[b] = { pulled: items.length, title: 0, cyber: 0, loc: 0, days: 0, kept: 0 };
   const seenUrl = new Set();
   for (const it of items) {
     const j = { board: b, ...NORM[b](it) }; j.dayOnly = /T21:59:59\.000Z$/.test(j.posted || "");
     if (!j.url || seenUrl.has(j.url)) continue; seenUrl.add(j.url);
+    if (isCyber(j, it)) { s.cyber++; continue; }                       // Assaf: never cyber / security
     if (!ALL_TITLES && !relevant(b, j)) { s.title++; continue; }
     if (!locOk(j)) { s.loc++; continue; }
     if (!daysOk(j)) { s.days++; continue; }

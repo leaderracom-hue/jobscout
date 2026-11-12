@@ -213,6 +213,7 @@ def score_job(j, kw):
         'Hebrew words; if unsure of a Hebrew word, use the plain English term. Male second person ("אתה", never "את"). NEVER state how many years or '
         'months he has (no "9 חודשים", "7+ שנים") — those numbers are not known; you may quote what the POST requires ("דורשים 3 שנים"). '
         "Hebrew letters, English and digits only.",
+        "HARD RULE: if the employer is a cybersecurity / information-security company, or the role is in cyber or security, set \"fit\" to 0.",
     ])
     for attempt in range(1, 6):
         r = requests.post("https://api.anthropic.com/v1/messages", timeout=90, headers={
@@ -402,7 +403,7 @@ def card(j, arc=False, queued=None):
         if j.get("easyApply"):
             tags += '<span class="tag" style="color:#16794a">Easy Apply</span>'
         if arc:
-            label = {"sent": "נשלח", "auto": "הוסר אוטומטית (ציון מתחת ל-45)"}.get(j.get("status"), "הוסר")
+            label = {"sent": "נשלח", "auto": "הוסר אוטומטית (סייבר / אבטחה)" if j.get("reason") == "cyber" else "הוסר אוטומטית (ציון מתחת ל-45)"}.get(j.get("status"), "הוסר")
             if j.get("by") == "agent":
                 label += " · ע״י הסוכן"
             tags += f'<span class="tag">{label}</span>'
