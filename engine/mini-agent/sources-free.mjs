@@ -19,22 +19,25 @@ async function get(url, ms = 15000) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- Drushim ----------
-export async function drushim(queries, { pages = 2 } = {}) {
-  const out = [], log = [];
-  for (const q of queries.filter(Boolean)) {
-    for (let n = 1; n <= pages; n++) {
-      const html = await get(`https://www.drushim.co.il/jobs/search/${encodeURIComponent(q)}/${n > 1 ? `?page=${n}&` : "?"}sort=date`);
-      const m = html && html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-      if (!m) { log.push({ q, page: n, status: html ? "no-data" : "http-error (possible block, stopped)" }); break; }
-      let jobs = [], totalPages = 1;
-      for (const qr of JSON.parse(m[1])?.props?.pageProps?.dehydratedState?.queries || []) { const p = qr?.state?.data?.pages?.[0]; if (Array.isArray(p?.jobs)) { jobs = p.jobs; totalPages = p.totalPages || 1; } }
-      for (const j of jobs) out.push({ title: j.title, company: /חסוי/.test(j.companyName || "") ? "(חסוי)" : j.companyName, location: j.city || (j.cities || []).join(" | "),
-        posted: iso(j.publishedAtIso), url: "https://www.drushim.co.il" + j.jobUrl, desc: strip(j.description), hot: !!j.isHot });
-      log.push({ q, page: n, jobs: jobs.length });
-      if (n >= totalPages) break;
-      await sleep(1200); // be polite: one page every ~1 s
+export async function drushim(queries, { pages = 2, parallel = 3 } = {}) {
+  const out = [], log = [], todo = [...new Set(queries.filter(Boolean))];
+  await Promise.all(Array.from({ length: parallel }, async () => { // 3 queries at a time, each query's pages in order, ~1 s apart
+    for (;;) {
+      const q = todo.shift(); if (q === undefined) return;
+      for (let n = 1; n <= pages; n++) {
+        const html = await get(`https://www.drushim.co.il/jobs/search/${encodeURIComponent(q)}/${n > 1 ? `?page=${n}&` : "?"}sort=date`);
+        const m = html && html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+        if (!m) { log.push({ q, page: n, status: html ? "no-data" : "http-error (possible block, stopped)" }); break; }
+        let jobs = [], totalPages = 1;
+        for (const qr of JSON.parse(m[1])?.props?.pageProps?.dehydratedState?.queries || []) { const p = qr?.state?.data?.pages?.[0]; if (Array.isArray(p?.jobs)) { jobs = p.jobs; totalPages = p.totalPages || 1; } }
+        for (const j of jobs) out.push({ title: j.title, company: /חסוי/.test(j.companyName || "") ? "(חסוי)" : j.companyName, location: j.city || (j.cities || []).join(" | "),
+          posted: iso(j.publishedAtIso), url: "https://www.drushim.co.il" + j.jobUrl, desc: strip(j.description), hot: !!j.isHot });
+        log.push({ q, page: n, jobs: jobs.length });
+        if (n >= totalPages) break;
+        await sleep(1000);
+      }
     }
-  }
+  }));
   return { items: out, log };
 }
 
@@ -66,6 +69,9 @@ const FETCH = { comeet, greenhouse, lever, ashby };
 export async function careers({ concurrency = 6 } = {}) {
   const extra = process.env.JOBSCOUT_ATS_EXTRA && fs.existsSync(process.env.JOBSCOUT_ATS_EXTRA) ? JSON.parse(fs.readFileSync(process.env.JOBSCOUT_ATS_EXTRA, "utf8")) : [];
   const seen = new Set(); const list = [...JSON.parse(fs.readFileSync(path.join(HERE, "ats-companies.json"), "utf8")), ...extra].filter(c => FETCH[c.ats] && !seen.has(c.ats + c.slug) && seen.add(c.ats + c.slug));
+  // the boards are the same for every keyword: fetch them once per 30 minutes and reuse (a multi-keyword search pays this once)
+  const cacheFile = path.join(process.env.TEMP || process.env.TMPDIR || "/tmp", `jobscout-careers-${list.length}.json`);
+  try { const c = JSON.parse(fs.readFileSync(cacheFile, "utf8")); if (Date.now() - c.at < 30 * 60000) return { items: c.items, log: { ...c.log, cached: true } }; } catch {}
   const out = []; const log = { boards: list.length, ok: 0, failed: 0, jobsAll: 0 };
   const queue = [...list];
   await Promise.all(Array.from({ length: concurrency }, async () => {
@@ -77,6 +83,7 @@ export async function careers({ concurrency = 6 } = {}) {
     }
   }));
   log.jobsIsrael = out.length;
+  if (log.ok) try { fs.writeFileSync(cacheFile, JSON.stringify({ at: Date.now(), items: out, log })); } catch {}
   return { items: out, log };
 }
 

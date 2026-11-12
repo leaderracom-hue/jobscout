@@ -121,8 +121,11 @@ const normKey = j => (String(j.company || "").toLowerCase().replace(/[^a-z֐-׿0
 // ---------- apify ----------
 const T = env.APIFY_API_TOKEN;
 async function apify(pathname, init) { const r = await fetch("https://api.apify.com/v2" + pathname + (pathname.includes("?") ? "&" : "?") + "token=" + T, init); return r.json(); }
+// timeoutSecs: Apify stops the run there and keeps every job already saved (pay-per-result → you pay only for those).
+// AllJobs fetches each job page and was the slowest source (~2 min); LinkedIn ~40–65 s. Capping both halves a search.
+const TIMEOUT = { "getascraper/alljobs-scraper": 60, "bebity/linkedin-jobs-scraper": 75 };
 async function runActor(id, input) {
-  const start = await apify(`/acts/${id.replace("/", "~")}/runs?waitForFinish=60&maxTotalChargeUsd=0.25`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+  const start = await apify(`/acts/${id.replace("/", "~")}/runs?waitForFinish=60&maxTotalChargeUsd=0.25${TIMEOUT[id] ? "&timeout=" + TIMEOUT[id] : ""}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
   let run = start.data; if (!run) throw new Error("start failed: " + JSON.stringify(start.error || start).slice(0, 200));
   const t0 = Date.now();
   while (!["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"].includes(run.status) && Date.now() - t0 < 420000) run = (await apify(`/actor-runs/${run.id}?waitForFinish=60`)).data;

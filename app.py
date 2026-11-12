@@ -14,7 +14,9 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -32,6 +34,7 @@ LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automati
          "crm integration": "CRM Integration", "crm automation": "CRM Automation", "ai trainer": "AI Trainer", "freelancer": "Freelancer", "מנהל מוצר": "מנהל מוצר", "מנהל מוצר אוטומציות": "מנהל מוצר אוטומציות", "אוטומציות שיווק": "אוטומציות שיווק", "מנהל פרויקט אוטומציות": "מנהל פרויקט אוטומציות"}
 WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע"}
 MIN_FIT = 45  # Assaf 11 Nov: a score under 45 goes straight to the archive ("auto")
+HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
 BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "careers": "דף קריירה"}
 
 st.set_page_config(page_title="Job Scout", page_icon=":material/work:", layout="wide")
@@ -49,11 +52,23 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 
+try:  # read once in the script thread; background search threads use this copy
+    SECRETS = {k: st.secrets[k] for k in st.secrets}
+except Exception:
+    SECRETS = {}
+
+
 def secret(name, default=None):
-    try:
-        return st.secrets[name]
-    except Exception:
-        return default
+    return SECRETS.get(name, default)
+
+
+@st.cache_resource
+def _shared():
+    """One per server process, shared by every rerun and every background search thread."""
+    return {"lock": threading.RLock(), "latest": None, "batches": {}}
+
+
+SH = _shared()
 
 
 # ---------------- password ----------------
@@ -86,8 +101,8 @@ def gh_url(path):
 
 
 def load_state():
-    # GitHub may serve a read up to ~60 s old right after a write, so the copy this session just wrote wins for 90 s.
-    c = st.session_state.get("state_cache")
+    # GitHub may serve a read up to ~60 s old right after a write, so the copy this server last wrote wins for 90 s.
+    c = SH["latest"]
     if c and time.time() - c[2] < 90:
         return json.loads(json.dumps(c[0])), c[1]
     r = requests.get(gh_url("state.json"), headers=gh_headers(), timeout=20)
@@ -127,21 +142,22 @@ def ats_extra_add(found):
 
 
 def update_state(mutate, message):
-    """Read fresh, apply the change, write back; retry if another write landed in between."""
-    for _ in range(4):
-        s, sha = load_state()
-        mutate(s)
-        body = {"message": message, "content": base64.b64encode(json.dumps(s, ensure_ascii=False, indent=1).encode()).decode()}
-        if sha:
-            body["sha"] = sha
-        r = requests.put(gh_url("state.json"), headers=gh_headers(), json=body, timeout=30)
-        if r.status_code in (200, 201):
-            st.session_state.state_cache = (s, r.json()["content"]["sha"], time.time())
-            return s
-        st.session_state.pop("state_cache", None)
-        if r.status_code not in (409, 422):
-            r.raise_for_status()
-        time.sleep(0.8)
+    """Read, apply the change, write back. One writer at a time on this server (lock); retry if GitHub saw another write."""
+    with SH["lock"]:
+        for _ in range(6):
+            s, sha = load_state()
+            mutate(s)
+            body = {"message": message, "content": base64.b64encode(json.dumps(s, ensure_ascii=False, indent=1).encode()).decode()}
+            if sha:
+                body["sha"] = sha
+            r = requests.put(gh_url("state.json"), headers=gh_headers(), json=body, timeout=30)
+            if r.status_code in (200, 201):
+                SH["latest"] = (s, r.json()["content"]["sha"], time.time())
+                return s
+            SH["latest"] = None
+            if r.status_code not in (409, 422):
+                r.raise_for_status()
+            time.sleep(1.0)
     raise RuntimeError("could not save to the data repo")
 
 
@@ -228,79 +244,105 @@ def archived(s, j):
     return any(urls & set(a.get("urls") or []) for a in s["archive"].values())
 
 
-def do_search(kw, hours):
+def search_core(kw, hours, batch, report):
+    """One keyword, no Streamlit calls (runs in a background thread). report(phase, **extra) updates the live view."""
     days = hours // 24 if hours in (24, 48, 72) else 7
-    with st.status(f"מחפש {LABEL.get(kw, kw)} · {WINDOWS[hours]}…", expanded=True) as box:
-        box.write("מושך משרות מ-LinkedIn, Indeed, AllJobs, דרושים ודפי קריירה (כ-2–3 דקות)…")
-        out = tempfile.mkdtemp()
-        extra_path = Path(out, "ats-extra-in.json")
-        try:
-            extra_path.write_text(json.dumps(ats_extra_load()[0]), encoding="utf-8")
-        except Exception:
-            extra_path.write_text("[]", encoding="utf-8")
-        env = {**os.environ, "APIFY_API_TOKEN": secret("APIFY_API_TOKEN", ""), "JOBENGINE_SERVER": "1", "JOBENGINE_RUNS_DIR": tempfile.gettempdir(),
-               "JOBSCOUT_ATS_EXTRA": str(extra_path)}
-        p = subprocess.run(["node", str(APP / "engine/mini-agent/scout.mjs"), kw, "--out", out, "--days", str(days)],
-                           cwd=str(APP / "engine"), env=env, capture_output=True, text=True, timeout=900)
-        if p.returncode != 0:
-            box.update(label="החיפוש נכשל", state="error")
-            st.code((p.stdout + p.stderr)[-1500:])
-            return
-        found = json.loads(Path(out, "results-full.json").read_text(encoding="utf-8"))
-        stats = json.loads(Path(out, "results.json").read_text(encoding="utf-8")).get("stats", {})  # per source: pulled / dropped / kept
-        try:  # careers boards found during this search → private repo, used from the next search on
-            ats_extra_add(json.loads(Path(out, "ats-new.json").read_text(encoding="utf-8")))
-        except Exception:
-            pass
-        spent = re.search(r'"spentUsd":([\d.]+)', p.stdout)
-        s, _ = load_state()
-        fresh, seen_again = [], {}
-        for j in found:
-            if archived(s, j):
+    report("pulling")
+    out = tempfile.mkdtemp()
+    extra_path = Path(out, "ats-extra-in.json")
+    try:
+        extra_path.write_text(json.dumps(ats_extra_load()[0]), encoding="utf-8")
+    except Exception:
+        extra_path.write_text("[]", encoding="utf-8")
+    env = {**os.environ, "APIFY_API_TOKEN": secret("APIFY_API_TOKEN", ""), "JOBENGINE_SERVER": "1", "JOBENGINE_RUNS_DIR": tempfile.gettempdir(),
+           "JOBSCOUT_ATS_EXTRA": str(extra_path)}
+    test_free = ["--free"] if os.environ.get("JOBSCOUT_TEST_FREE") == "1" else []  # local test only: free sources, no Apify
+    p = subprocess.run(["node", str(APP / "engine/mini-agent/scout.mjs"), kw, "--out", out, "--days", str(days), *test_free],
+                       cwd=str(APP / "engine"), env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    if p.returncode != 0:
+        report("error", error=(p.stdout + p.stderr)[-600:])
+        return
+    found = json.loads(Path(out, "results-full.json").read_text(encoding="utf-8"))
+    stats = json.loads(Path(out, "results.json").read_text(encoding="utf-8")).get("stats", {})  # per source: pulled / dropped / kept
+    try:  # careers boards found during this search → private repo, used from the next search on
+        ats_extra_add(json.loads(Path(out, "ats-new.json").read_text(encoding="utf-8")))
+    except Exception:
+        pass
+    spent = re.search(r'"spentUsd":([\d.]+)', p.stdout)
+    s, _ = load_state()
+    fresh, seen_again, keys = [], {}, []
+    for j in found:
+        if archived(s, j):
+            continue
+        k = key_of(j)
+        keys.append(k)
+        (seen_again.__setitem__(k, j) if k in s["jobs"] else fresh.append((k, j)))
+    report("scoring", found=len(found), new=len(fresh))
+    scores, usd = {}, 0.0
+    with ThreadPoolExecutor(8) as ex:
+        futs = {ex.submit(score_job, j, kw): k for k, j in fresh}
+        for i, f in enumerate(as_completed(futs), 1):
+            k = futs[f]
+            try:
+                sc = f.result()
+                usd += sc.pop("usd")
+                scores[k] = sc
+            except Exception as e:
+                scores[k] = {"scoreError": str(e)[:160]}
+            report("scoring", scored=i)
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=HISTORY_HOURS)).isoformat()
+
+    def mutate(st_):
+        for k, j in seen_again.items():
+            h = st_["jobs"].get(k)
+            if not h:
                 continue
-            k = key_of(j)
-            if k in s["jobs"]:
-                seen_again[k] = j
-            else:
-                fresh.append((k, j))
-        box.write(f"נמצאו {len(found)} משרות, {len(fresh)} חדשות. מדרג ובוחר קורות חיים…")
-        bar = box.progress(0.0)
-        scores, usd = {}, 0.0
-        with ThreadPoolExecutor(4) as ex:
-            futs = {ex.submit(score_job, j, kw): k for k, j in fresh}
-            for i, f in enumerate(as_completed(futs), 1):
-                k = futs[f]
-                try:
-                    sc = f.result()
-                    usd += sc.pop("usd")
-                    scores[k] = sc
-                except Exception as e:
-                    scores[k] = {"scoreError": str(e)[:160]}
-                bar.progress(i / max(1, len(fresh)))
-        now = dt.datetime.now(dt.timezone.utc).isoformat()
+            h["kws"] = sorted(set(h.get("kws", [])) | {kw})
+            h["boards"] = sorted(set(h.get("boards", [])) | set(j.get("boards", [])))
+            h["links"] = {**(h.get("links") or {}), **(j.get("links") or {})}
+        for k, j in fresh:
+            st_["jobs"][k] = {"key": k, "title": j["title"], "company": j.get("company"), "location": j.get("location"),
+                              "posted": j.get("posted"), "dayOnly": bool(j.get("dayOnly")), "url": j.get("url"), "links": j.get("links"),
+                              "boards": j.get("boards", []), "easyApply": bool(j.get("easyApply")), "kws": [kw], "foundAt": now, **scores.get(k, {})}
+            fit = scores.get(k, {}).get("fit")
+            if fit is not None and fit < MIN_FIT:  # never shown, never returns
+                st_["archive"][k] = {"status": "auto", "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
+                                     "urls": list((j.get("links") or {"x": j.get("url")}).values())}
+        auto = sum(1 for k, _ in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
+        runs = [{"kw": kw, "hours": hours or None, "at": now, "batch": batch, "found": len(found), "new": len(fresh), "autoRemoved": auto,
+                 "stats": stats, "keys": keys, "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:199]
+        for r in runs:  # history keeps the job list for 72 hours only
+            if r.get("keys") and r["at"] < cutoff:
+                r.pop("keys")
+        st_["runs"] = runs
 
-        def mutate(st_):
-            for k, j in seen_again.items():
-                h = st_["jobs"].get(k)
-                if not h:
-                    continue
-                h["kws"] = sorted(set(h.get("kws", [])) | {kw})
-                h["boards"] = sorted(set(h.get("boards", [])) | set(j.get("boards", [])))
-                h["links"] = {**(h.get("links") or {}), **(j.get("links") or {})}
-            for k, j in fresh:
-                st_["jobs"][k] = {"key": k, "title": j["title"], "company": j.get("company"), "location": j.get("location"),
-                                  "posted": j.get("posted"), "dayOnly": bool(j.get("dayOnly")), "url": j.get("url"), "links": j.get("links"),
-                                  "boards": j.get("boards", []), "easyApply": bool(j.get("easyApply")), "kws": [kw], "foundAt": now, **scores.get(k, {})}
-                fit = scores.get(k, {}).get("fit")
-                if fit is not None and fit < MIN_FIT:  # never shown, never returns
-                    st_["archive"][k] = {"status": "auto", "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
-                                         "urls": list((j.get("links") or {"x": j.get("url")}).values())}
-            auto = sum(1 for k, _ in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
-            st_["runs"] = [{"kw": kw, "hours": hours or None, "at": now, "found": len(found), "new": len(fresh), "autoRemoved": auto, "stats": stats,
-                            "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:199]
+    update_state(mutate, f"run {kw} {hours or 'week'}h: {len(fresh)} new")
+    report("done", new=len(fresh), usd=round(usd, 3))
 
-        update_state(mutate, f"run {kw} {hours or 'week'}h: {len(fresh)} new")
-        box.update(label=f"הסתיים: {len(fresh)} משרות חדשות · Claude ${usd:.2f}", state="complete", expanded=False)
+
+def start_batch(kws, hours):
+    """Start a multi-keyword search in the background (3 keywords at a time) and return its id."""
+    batch = uuid.uuid4().hex[:10]
+    info = {"kws": list(kws), "hours": hours, "started": time.time(), "kw": {k: {"phase": "queued"} for k in kws}, "done": False}
+    SH["batches"][batch] = info
+
+    def run_one(k):
+        def report(phase, **extra):
+            info["kw"][k] = {**info["kw"][k], "phase": phase, **extra}
+        try:
+            search_core(k, hours, batch, report)
+        except Exception as e:
+            report("error", error=str(e)[:300])
+
+    def run_all():
+        with ThreadPoolExecutor(3) as ex:
+            list(ex.map(run_one, kws))
+        info["done"] = True
+        info["ended"] = time.time()
+
+    threading.Thread(target=run_all, daemon=True).start()
+    return batch
 
 
 # ---------------- screen ----------------
@@ -433,55 +475,131 @@ c1, c2 = st.columns(2)
 win = c1.segmented_control("פורסם ב-", list(WINDOWS), format_func=lambda h: WINDOWS[h], default=48, key="win") or 0
 sort = c2.segmented_control("מיון", ["fit", "new"], format_func=lambda s: "התאמה" if s == "fit" else "הכי חדש", default="fit", key="sort") or "fit"
 
-left = cap - used
+PHASE = {"queued": "ממתין", "pulling": "מושך משרות", "scoring": "מדרג וקורות חיים", "done": "הסתיים", "error": "נכשל"}
+active = [i for i in SH["batches"].values() if not i["done"]]
+pending = sum(1 for i in active for v in i["kw"].values() if v.get("phase") not in ("done", "error"))
+left = cap - used - pending
 names = " + ".join(LABEL.get(k, k) for k in kws) or "בחר מילה"
 r1, r2 = st.columns([2, 3], vertical_alignment="center")
-if r1.button(f"חפש · {names} · {WINDOWS[win]}", type="primary", disabled=not kws or len(kws) > left, use_container_width=True):
-    for k in kws:  # one search per keyword, one after the other; each counts toward the daily cap
-        do_search(k, win)
-    state, _ = load_state()
-    used = runs_today(state)
-r2.caption(f"~$0.15–0.30 לכל מילת חיפוש · נבחרו {len(kws)} · היום {used}/{cap} חיפושים"
-           + (" · יותר מילים ממה שנשאר היום" if len(kws) > cap - used else ""))
-for k in kws:
-    last = next((r for r in state.get("runs", []) if r["kw"] == k), None)
-    if not last:
-        continue
-    at = dt.datetime.fromisoformat(last["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
-    auto_note = f" ({last['autoRemoved']} מתחת ל-45 הוסרו)" if last.get("autoRemoved") else ""
-    per = " · ".join(f"{BOARD.get(b, b)} {v.get('kept', 0)}/{v.get('pulled', 0)}" for b, v in (last.get("stats") or {}).items())
-    st.caption(f"ריצה אחרונה ל-{LABEL.get(k, k)}: {at} · {last['new']} חדשות{auto_note} · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}"
-               + (f"  \nלפי מקור (נכנסו/נמשכו): {per}" if per else ""))
-last = any(r["kw"] in kws for r in state.get("runs", []))
-kw = kws[0] if kws else "marketing automation"
+mybatch = SH["batches"].get(st.session_state.get("batch") or "")
+running = bool(mybatch and not mybatch["done"])
+if r1.button(f"חפש · {names} · {WINDOWS[win]}", type="primary", disabled=running or not kws or len(kws) > left, use_container_width=True):
+    st.session_state.batch = start_batch(kws, win)  # runs in the background; results appear below while it works
+    st.session_state.pop("hist", None)
+    st.rerun()
+r2.caption(f"~$0.15–0.30 לכל מילת חיפוש · נבחרו {len(kws)} · היום {used + pending}/{cap} חיפושים"
+           + (" · יותר מילים ממה שנשאר היום" if len(kws) > left else ""))
 
-queue = state.get("queue", {})
-mine = [j for j in state["jobs"].values() if j["key"] not in state["archive"] and j["key"] not in queue and any(k in j.get("kws", []) for k in kws)]
-qjobs = sorted(({**state["jobs"].get(k, {"title": "?"}), "key": k, "_q": q} for k, q in queue.items() if k not in state["archive"]),
-               key=lambda j: j["_q"].get("at", ""), reverse=True)
-shown = [j for j in mine if not win or age_h(j) <= win + (0 if j.get("dayOnly") else 1)]
-shown.sort(key=(lambda j: (-(j.get("fit") if j.get("fit") is not None else -1), age_h(j))) if sort == "fit" else age_h)
-arc = sorted(({**state["jobs"].get(k, {}), **a, "key": k} for k, a in state["archive"].items()), key=lambda j: j.get("at", ""), reverse=True)
 
-t1, tq, t2 = st.tabs([f"תוצאות ({len(shown)})", f"תור שליחה ({len(qjobs)})", f"ארכיון ({len(arc)})"])
-with tq:
-    if not qjobs:
-        st.info("התור ריק. לחץ \"לשליחה ←\" על משרה בתוצאות, ואז הפעל את סוכן השליחה במחשב שלך.")
+def batch_progress(info):
+    secs = int((info.get("ended") or time.time()) - info["started"])
+    lines = []
+    for k in info["kws"]:
+        v = info["kw"][k]
+        extra = ""
+        if v.get("phase") == "scoring" and v.get("new") is not None:
+            extra = f" · {v.get('scored', 0)}/{v['new']}"
+        if v.get("phase") == "done":
+            extra = f" · {v.get('new', 0)} חדשות"
+        if v.get("phase") == "error":
+            extra = f" · {str(v.get('error', ''))[:80]}"
+        icon = {"done": "✓", "error": "✗"}.get(v.get("phase"), "…")
+        lines.append(f"{icon} **{LABEL.get(k, k)}** · {PHASE.get(v.get('phase'), v.get('phase'))}{extra}")
+    head = f"{'הסתיים' if info['done'] else 'מחפש'} · {secs // 60}:{secs % 60:02d} דק'"
+    return head, lines
+
+
+def body():
+    s, _ = load_state()
+    info = SH["batches"].get(st.session_state.get("batch") or "")
+    if info:
+        head, lines = batch_progress(info)
+        with st.container(border=True):
+            st.markdown(f"**{head}**")
+            st.markdown("  \n".join(lines))
+            if info["done"] and st.button("סגור", key="close_batch"):
+                st.session_state.pop("batch", None)
+                st.rerun()
+        if info["done"] and not info.get("seen"):
+            info["seen"] = True
+            st.rerun(scope="app")  # refresh the counters at the top once the batch ends
+    view_kws = list(dict.fromkeys(kws + (info["kws"] if info else [])))
+    for k in view_kws:
+        last = next((r for r in s.get("runs", []) if r["kw"] == k), None)
+        if not last:
+            continue
+        at = dt.datetime.fromisoformat(last["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
+        auto_note = f" ({last['autoRemoved']} מתחת ל-45 הוסרו)" if last.get("autoRemoved") else ""
+        per = " · ".join(f"{BOARD.get(b, b)} {v.get('kept', 0)}/{v.get('pulled', 0)}" for b, v in (last.get("stats") or {}).items())
+        st.caption(f"ריצה אחרונה ל-{LABEL.get(k, k)}: {at} · {last['new']} חדשות{auto_note} · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}"
+                   + (f"  \nלפי מקור (נכנסו/נמשכו): {per}" if per else ""))
+
+    queue = s.get("queue", {})
+    hist = st.session_state.get("hist")
+    if hist:  # a past search reopened from the history tab
+        hk = set(hist["keys"])
+        mine = [j for k, j in s["jobs"].items() if k in hk and k not in s["archive"] and k not in queue]
+        shown = list(mine)
+        c_a, c_b = st.columns([4, 1], vertical_alignment="center")
+        c_a.info(f"מציג תוצאות שמורות: {hist['label']} · {len(mine)} פתוחות מתוך {len(hk)}")
+        if c_b.button("חזור", key="hist_back"):
+            st.session_state.pop("hist", None)
+            st.rerun()
     else:
-        st.caption("סוכן השליחה רץ במחשב שלך: `node job-engine/apply-agent/apply.mjs`. הוא ממלא את הטופס ועוצר; אתה לוחץ \"שלח\" בדפדפן שלו.")
-    for j in qjobs:
-        card(j, queued=j["_q"])
-with t1:
-    if not shown:
-        hidden = len(mine)
-        st.info(f"אין משרות מה-{WINDOWS[win]} האחרונות. {hidden} ישנות יותר מוסתרות." if hidden
-                else ("אין משרות פתוחות למילים שבחרת." if last else "עוד לא חיפשת את המילים האלה. החיפוש ירוץ רק כשתלחץ \"חפש\"."))
-    for j in shown:
-        card(j)
-    if shown and len(mine) > len(shown):
-        st.caption(f"{len(mine) - len(shown)} משרות ישנות יותר מ-{WINDOWS[win]} מוסתרות")
-with t2:
-    if not arc:
-        st.info("הארכיון ריק. משרות שתסמן \"שלחתי\" או \"הסר\" יגיעו לכאן ולא יופיעו שוב בחיפושים.")
-    for j in arc:
-        card(j, arc=True)
+        mine = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue and any(k in j.get("kws", []) for k in view_kws)]
+        shown = [j for j in mine if not win or age_h(j) <= win + (0 if j.get("dayOnly") else 1)]
+    shown.sort(key=(lambda j: (-(j.get("fit") if j.get("fit") is not None else -1), age_h(j))) if sort == "fit" else age_h)
+    qjobs = sorted(({**s["jobs"].get(k, {"title": "?"}), "key": k, "_q": q} for k, q in queue.items() if k not in s["archive"]),
+                   key=lambda j: j["_q"].get("at", ""), reverse=True)
+    arc = sorted(({**s["jobs"].get(k, {}), **a, "key": k} for k, a in s["archive"].items()), key=lambda j: j.get("at", ""), reverse=True)
+    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=HISTORY_HOURS)).isoformat()
+    groups = {}
+    for r in s.get("runs", []):
+        if r.get("keys") and r["at"] >= cutoff:
+            groups.setdefault(r.get("batch") or r["at"], []).append(r)
+
+    t1, tq, th, t2 = st.tabs([f"תוצאות ({len(shown)})", f"תור שליחה ({len(qjobs)})", f"היסטוריה ({len(groups)})", f"ארכיון ({len(arc)})"])
+    with t1:
+        if not shown:
+            if running:
+                st.info("החיפוש רץ. משרות חדשות יופיעו כאן ברגע שכל מילה מסתיימת.")
+            elif hist:
+                st.info("כל המשרות מהחיפוש הזה כבר בארכיון או בתור.")
+            else:
+                hidden = len(mine)
+                ran = any(r["kw"] in view_kws for r in s.get("runs", []))
+                st.info(f"אין משרות מה-{WINDOWS[win]} האחרונות. {hidden} ישנות יותר מוסתרות." if hidden
+                        else ("אין משרות פתוחות למילים שבחרת." if ran else "עוד לא חיפשת את המילים האלה. החיפוש ירוץ רק כשתלחץ \"חפש\"."))
+        for j in shown:
+            card(j)
+        if not hist and shown and len(mine) > len(shown):
+            st.caption(f"{len(mine) - len(shown)} משרות ישנות יותר מ-{WINDOWS[win]} מוסתרות")
+    with tq:
+        if not qjobs:
+            st.info("התור ריק. לחץ \"לשליחה ←\" על משרה בתוצאות, ואז הפעל את סוכן השליחה במחשב שלך.")
+        else:
+            st.caption("סוכן השליחה רץ במחשב שלך: `node job-engine/apply-agent/apply.mjs`. הוא ממלא את הטופס ועוצר; אתה לוחץ \"שלח\" בדפדפן שלו.")
+        for j in qjobs:
+            card(j, queued=j["_q"])
+    with th:
+        st.caption(f"חיפושים מ-{HISTORY_HOURS} השעות האחרונות. פתיחה טוענת את התוצאות מהזיכרון, בלי חיפוש ובלי עלות.")
+        if not groups:
+            st.info("אין עדיין חיפושים שמורים. חיפושים מעכשיו והלאה יישמרו כאן ל-72 שעות.")
+        for g, runs in sorted(groups.items(), key=lambda x: x[1][0]["at"], reverse=True):
+            at = dt.datetime.fromisoformat(runs[0]["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
+            keys = list(dict.fromkeys(k for r in runs for k in r["keys"]))
+            open_n = sum(1 for k in keys if k not in s["archive"] and k not in queue)
+            label = f"{at} · {' + '.join(LABEL.get(r['kw'], r['kw']) for r in runs)} · {WINDOWS.get(runs[0].get('hours') or 0, 'שבוע')}"
+            a, b = st.columns([4, 1], vertical_alignment="center")
+            a.markdown(f"**{label}**  \n{len(keys)} משרות · {open_n} עדיין פתוחות")
+            if b.button("פתח", key=f"h-{g}", use_container_width=True):
+                st.session_state.hist = {"keys": keys, "label": label}
+                st.rerun()
+    with t2:
+        if not arc:
+            st.info("הארכיון ריק. משרות שתסמן \"שלחתי\" או \"הסר\" יגיעו לכאן ולא יופיעו שוב בחיפושים.")
+        for j in arc:
+            card(j, arc=True)
+
+
+st.fragment(run_every=4 if running else None)(body)()
