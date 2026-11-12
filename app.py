@@ -294,6 +294,8 @@ def search_core(kw, hours, batch, report):
     now = dt.datetime.now(dt.timezone.utc).isoformat()
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=HISTORY_HOURS)).isoformat()
 
+    autoc = {}
+
     def mutate(st_):
         for k, j in seen_again.items():
             h = st_["jobs"].get(k)
@@ -311,7 +313,8 @@ def search_core(kw, hours, batch, report):
                 st_["archive"][k] = {"status": "auto", "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
                                      "urls": list((j.get("links") or {"x": j.get("url")}).values())}
         auto = sum(1 for k, _ in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
-        runs = [{"kw": kw, "hours": hours or None, "at": now, "batch": batch, "found": len(found), "new": len(fresh), "autoRemoved": auto,
+        autoc["n"] = auto
+        runs =[{"kw": kw, "hours": hours or None, "at": now, "batch": batch, "found": len(found), "new": len(fresh), "autoRemoved": auto,
                  "stats": stats, "keys": keys, "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:199]
         for r in runs:  # history keeps the job list for 72 hours only
             if r.get("keys") and r["at"] < cutoff:
@@ -319,7 +322,7 @@ def search_core(kw, hours, batch, report):
         st_["runs"] = runs
 
     update_state(mutate, f"run {kw} {hours or 'week'}h: {len(fresh)} new")
-    report("done", new=len(fresh), usd=round(usd, 3))
+    report("done", new=len(fresh), auto=autoc.get("n", 0), usd=round(usd, 3))
 
 
 def start_batch(kws, hours):
@@ -501,7 +504,11 @@ def batch_progress(info):
         if v.get("phase") == "scoring" and v.get("new") is not None:
             extra = f" · {v.get('scored', 0)}/{v['new']}"
         if v.get("phase") == "done":
-            extra = f" · {v.get('new', 0)} חדשות"
+            n, a = v.get("new", 0), v.get("auto", 0)
+            if n and a >= n:
+                extra = f" · {n} חדשות, כולן הוסרו אוטומטית (ציון מתחת ל-{MIN_FIT}), אין מה להציג"
+            else:
+                extra = f" · {n} חדשות" + (f", {a} הוסרו אוטומטית (מתחת ל-{MIN_FIT})" if a else "")
         if v.get("phase") == "error":
             extra = f" · {str(v.get('error', ''))[:80]}"
         icon = {"done": "✓", "error": "✗"}.get(v.get("phase"), "…")
@@ -510,8 +517,67 @@ def batch_progress(info):
     return head, lines
 
 
+def kw_history(s, kw):
+    """History page for ONE search keyword: every run, and every job it ever found (open, queued, sent, removed, auto-removed)."""
+    queue = s.get("queue", {})
+    c_a, c_b = st.columns([5, 1], vertical_alignment="center")
+    c_a.subheader(f"היסטוריה · {LABEL.get(kw, kw)}")
+    if c_b.button("חזור", key="kwh_back", use_container_width=True):
+        st.session_state.pop("kwhist", None)
+        st.rerun()
+    runs = [r for r in s.get("runs", []) if r["kw"] == kw]
+    jobs = [j for j in s["jobs"].values() if kw in j.get("kws", [])]
+    opn, auto, done = [], [], []
+    for j in jobs:
+        k = j["key"]
+        a = s["archive"].get(k)
+        if a:
+            row = {**j, **a, "key": k}
+            (auto if a.get("status") == "auto" else done).append(row)
+        elif k not in queue:
+            opn.append(j)
+    qj = [{**j, "_q": queue[j["key"]]} for j in jobs if j["key"] in queue and j["key"] not in s["archive"]]
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("ריצות", len(runs))
+    m2.metric("משרות שנמצאו", len(jobs))
+    m3.metric("פתוחות", len(opn) + len(qj))
+    m4.metric(f"הוסרו אוטומטית (<{MIN_FIT})", len(auto))
+    if runs:
+        st.markdown("**ריצות**")
+        for r in runs:
+            at = dt.datetime.fromisoformat(r["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
+            per = " · ".join(f"{BOARD.get(b, b)} {v.get('kept', 0)}/{v.get('pulled', 0)}" for b, v in (r.get("stats") or {}).items())
+            note = f" · {r['autoRemoved']} הוסרו אוטומטית" if r.get("autoRemoved") else ""
+            st.caption(f"{at} · {WINDOWS.get(r.get('hours') or 0, 'שבוע')} · {r['new']} חדשות{note} · Apify ${r.get('apifyUsd') or '?'} + Claude ${r.get('claudeUsd')}"
+                       + (f"  \nלפי מקור (נכנסו/נמשכו): {per}" if per else ""))
+    else:
+        st.info("אין עדיין ריצות שמורות למילה הזאת.")
+    tabs = st.tabs([f"פתוחות ({len(opn) + len(qj)})", f"הוסרו אוטומטית ({len(auto)})", f"נשלחו / הוסרו ({len(done)})"])
+    with tabs[0]:
+        if not (opn or qj):
+            st.info("אין משרות פתוחות למילה הזאת.")
+        for j in sorted(opn, key=lambda j: -(j.get("fit") if j.get("fit") is not None else -1)):
+            card(j)
+        for j in qj:
+            card(j, queued=j["_q"])
+    with tabs[1]:
+        st.caption(f"משרות שקיבלו ציון מתחת ל-{MIN_FIT} ולא מוצגות בתוצאות. אפשר להחזיר כל אחת.")
+        if not auto:
+            st.info("אין משרות שהוסרו אוטומטית.")
+        for j in sorted(auto, key=lambda j: j.get("at", ""), reverse=True):
+            card(j, arc=True)
+    with tabs[2]:
+        if not done:
+            st.info("לא סימנת עדיין משרות של המילה הזאת.")
+        for j in sorted(done, key=lambda j: j.get("at", ""), reverse=True):
+            card(j, arc=True)
+
+
 def body():
     s, _ = load_state()
+    if st.session_state.get("kwhist"):
+        kw_history(s, st.session_state.kwhist)
+        return
     info = SH["batches"].get(st.session_state.get("batch") or "")
     if info:
         head, lines = batch_progress(info)
@@ -532,8 +598,12 @@ def body():
         at = dt.datetime.fromisoformat(last["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
         auto_note = f" ({last['autoRemoved']} מתחת ל-45 הוסרו)" if last.get("autoRemoved") else ""
         per = " · ".join(f"{BOARD.get(b, b)} {v.get('kept', 0)}/{v.get('pulled', 0)}" for b, v in (last.get("stats") or {}).items())
-        st.caption(f"ריצה אחרונה ל-{LABEL.get(k, k)}: {at} · {last['new']} חדשות{auto_note} · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}"
-                   + (f"  \nלפי מקור (נכנסו/נמשכו): {per}" if per else ""))
+        c_l, c_h = st.columns([5, 1], vertical_alignment="center")
+        c_l.caption(f"ריצה אחרונה ל-{LABEL.get(k, k)}: {at} · {last['new']} חדשות{auto_note} · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}"
+                    + (f"  \nלפי מקור (נכנסו/נמשכו): {per}" if per else ""))
+        if c_h.button("היסטוריה", key=f"kh-{k}", use_container_width=True):
+            st.session_state.kwhist = k
+            st.rerun()
 
     queue = s.get("queue", {})
     hist = st.session_state.get("hist")
@@ -569,8 +639,14 @@ def body():
             else:
                 hidden = len(mine)
                 ran = any(r["kw"] in view_kws for r in s.get("runs", []))
-                st.info(f"אין משרות מה-{WINDOWS[win]} האחרונות. {hidden} ישנות יותר מוסתרות." if hidden
-                        else ("אין משרות פתוחות למילים שבחרת." if ran else "עוד לא חיפשת את המילים האלה. החיפוש ירוץ רק כשתלחץ \"חפש\"."))
+                lastauto = sum((next((r for r in s.get("runs", []) if r["kw"] == k), {}).get("autoRemoved") or 0) for k in view_kws)
+                if hidden:
+                    st.info(f"אין משרות מה-{WINDOWS[win]} האחרונות. {hidden} ישנות יותר מוסתרות.")
+                elif lastauto:
+                    st.info(f"הריצה האחרונה מצאה {lastauto} משרות חדשות, אבל כולן קיבלו ציון מתחת ל-{MIN_FIT} והוסרו אוטומטית, לכן אין מה להציג. "
+                            f"לחץ \"היסטוריה\" ליד המילה כדי לראות אותן ולהחזיר.")
+                else:
+                    st.info("אין משרות פתוחות למילים שבחרת." if ran else "עוד לא חיפשת את המילים האלה. החיפוש ירוץ רק כשתלחץ \"חפש\".")
         for j in shown:
             card(j)
         if not hist and shown and len(mine) > len(shown):
