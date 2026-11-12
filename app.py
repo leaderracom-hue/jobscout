@@ -458,7 +458,7 @@ def card(j, arc=False, queued=None):
 
 
 state, _ = load_state()
-cap = int(secret("MAX_RUNS_PER_DAY", 10))
+cap = int(secret("MAX_SEARCHES_PER_DAY", 25))  # Assaf 12 Nov: 25 a day (the old MAX_RUNS_PER_DAY=10 secret is no longer read)
 used = runs_today(state)
 
 top_l, top_r = st.columns([4, 1])

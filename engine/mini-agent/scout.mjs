@@ -29,7 +29,7 @@ const HE = flag("he", entry.he || "");
 const LOC = flag("loc", "all");
 const DAYS = +flag("days", 7);
 const ROWS = +flag("rows", 30);
-const ROWS_DEFAULT = { linkedin: 50, alljobs: 50 };            // Assaf 11 Nov: up to 50 per board
+const ROWS_DEFAULT = { linkedin: 70, alljobs: 70, indeed: 70 }; // Assaf 12 Nov: up to 70 per board
 const R = b => (flag("rows", false) ? ROWS : ROWS_DEFAULT[b] || ROWS);
 const BOARDS = String(flag("free", false) ? "drushim,careers" : flag("boards", "linkedin,indeed,drushim,alljobs,careers")).split(",").map(s => s.trim()).filter(Boolean);
 const DRY = !!flag("dry", false), MATCH = !!flag("match", false), ALL_TITLES = !!flag("all-titles", false);
@@ -43,7 +43,7 @@ const ACTORS = {
   // LinkedIn's own keyword search URL (title + description, Israel geoId, exact hours) so results match what the site shows;
   // the old "titles" input searched job titles only and missed ~60% of what LinkedIn lists (11 Nov check: 12/30).
   linkedin: { id: "bebity/linkedin-jobs-scraper", perItem: 0.0015, runs: () => [{ startUrls: [{ url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(SEARCH)}&location=Israel&geoId=101620260&f_TPR=r${DAYS * 86400}` }], maxRowsPerUrl: R("linkedin"), rows: R("linkedin") }] },
-  indeed:   { id: "valig/indeed-jobs-scraper", perItem: 0.0001, start: 0.001, runs: () => [{ country: "il", title: SEARCH, limit: ROWS, datePosted: NEAR(DAYS) }] },
+  indeed:   { id: "valig/indeed-jobs-scraper", perItem: 0.0001, start: 0.001, runs: () => [{ country: "il", title: SEARCH, limit: R("indeed"), datePosted: NEAR(DAYS) }] },
   drushimapify: { id: "blackfalcondata/drushim-scraper", perItem: 0.002, start: 0.01, runs: () => [{ query: SEARCH, maxResults: HE ? half : ROWS, maxPages: 3 }, ...(HE ? [{ query: HE, maxResults: half, maxPages: 3 }] : [])] },
   alljobs:  { id: "getascraper/alljobs-scraper", perItem: 0.0018, runs: () => [{ keywords: [SEARCH, HE].filter(Boolean), maxItems: R("alljobs"), postedWithinDays: DAYS, detailMode: "always" }] },
   jobmaster:{ id: "getascraper/jobmaster-scraper", perItem: 0.0015, runs: () => [{ searchQueries: [SEARCH, HE].filter(Boolean), maxItems: ROWS, maxItemsPerQuery: HE ? half : ROWS, sortBy: "newest" }] },
@@ -129,7 +129,7 @@ const T = env.APIFY_API_TOKEN;
 async function apify(pathname, init) { const r = await fetch("https://api.apify.com/v2" + pathname + (pathname.includes("?") ? "&" : "?") + "token=" + T, init); return r.json(); }
 // timeoutSecs: Apify stops the run there and keeps every job already saved (pay-per-result → you pay only for those).
 // AllJobs fetches each job page and was the slowest source (~2 min); LinkedIn ~40–65 s. Capping both halves a search.
-const TIMEOUT = { "getascraper/alljobs-scraper": 60, "bebity/linkedin-jobs-scraper": 75 };
+const TIMEOUT = { "getascraper/alljobs-scraper": 75, "bebity/linkedin-jobs-scraper": 90 }; // 70 rows need a little longer
 async function runActor(id, input) {
   const start = await apify(`/acts/${id.replace("/", "~")}/runs?waitForFinish=60&maxTotalChargeUsd=0.25${TIMEOUT[id] ? "&timeout=" + TIMEOUT[id] : ""}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
   let run = start.data; if (!run) throw new Error("start failed: " + JSON.stringify(start.error || start).slice(0, 200));
