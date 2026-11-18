@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
 const STATUS = { queued: "ממתין", ready: "מולא · ממתין שתלחץ שלח", needs_you: "צריך אותך", unsupported: "אתר שעוד לא נתמך", skipped: "נסגר בלי שליחה", failed: "נכשל" };
-const DOOR = { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", comeet: "Comeet", "careers-site": "דף קריירה", "company-site": "אתר החברה" };
+const DOOR = { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", comeet: "Comeet", workable: "Workable", smartrecruiters: "SmartRecruiters", "no-account-ats": "מערכת בלי הרשמה" };
 const send = msg => chrome.runtime.sendMessage(msg);
 
 async function loadSettings() {
@@ -22,7 +22,7 @@ function card(j) {
   return `<div class="job" data-key="${esc(j.key)}">
     <div class="row"><span class="fit ${cls}">${fit ?? "—"}</span>
       <div><div class="t"><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></div>
-      <div class="small muted">${esc(j.company || "—")} · ${esc(DOOR[j.door] || "אין דף הגשה עדיין")}</div></div></div>
+      <div class="small muted">${esc(j.company || "—")} · ${esc(DOOR[j.door] || "אין דף הגשה בלי הרשמה")}</div></div></div>
     <div><span class="status s-${st}">${STATUS[st] || st}${j.q?.note ? " · " + esc(j.q.note) : ""}</span></div>
     <div class="small muted">קו"ח: ${esc(j.cv || "—")}</div>
     <div class="acts">

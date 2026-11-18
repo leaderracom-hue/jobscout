@@ -16,21 +16,9 @@
   "guessed": true
  },
  {
-  "name": "Hud",
-  "ats": "ashby",
-  "slug": "hud",
-  "guessed": true
- },
- {
   "name": "Lemonade",
   "ats": "ashby",
   "slug": "lemonade",
-  "guessed": true
- },
- {
-  "name": "Matrix",
-  "ats": "ashby",
-  "slug": "matrix",
   "guessed": true
  },
  {
@@ -39,34 +27,10 @@
   "slug": "monday.com"
  },
  {
-  "name": "Paragon",
-  "ats": "ashby",
-  "slug": "paragon",
-  "guessed": true
- },
- {
   "name": "SeatPick",
   "ats": "ashby",
   "slug": "seatpick",
   "guessed": true
- },
- {
-  "name": "Vega",
-  "ats": "ashby",
-  "slug": "vega",
-  "guessed": true
- },
- {
-  "name": "Bond",
-  "ats": "comeet",
-  "slug": "bond",
-  "uid": "D2.00B"
- },
- {
-  "name": "Cognyte",
-  "ats": "comeet",
-  "slug": "cognyte",
-  "uid": "F2.009"
  },
  {
   "name": "enlightenergy",
@@ -117,32 +81,15 @@
   "uid": "9A.003"
  },
  {
-  "name": "silverfort",
-  "ats": "comeet",
-  "slug": "silverfort",
-  "uid": "54.007"
- },
- {
   "name": "Voyantis",
   "ats": "comeet",
   "slug": "voyantis",
   "uid": "86.00B"
  },
  {
-  "name": "Zenity",
-  "ats": "comeet",
-  "slug": "zenity",
-  "uid": "19.000"
- },
- {
   "name": "autods",
   "ats": "greenhouse",
   "slug": "autods"
- },
- {
-  "name": "Canonical",
-  "ats": "greenhouse",
-  "slug": "canonical"
  },
  {
   "name": "canonical_managed_posts",
@@ -168,12 +115,6 @@
   "guessed": true
  },
  {
-  "name": "Encore AI",
-  "ats": "greenhouse",
-  "slug": "encore",
-  "guessed": true
- },
- {
   "name": "Guidde",
   "ats": "greenhouse",
   "slug": "guidde"
@@ -188,12 +129,6 @@
   "name": "MyHeritage",
   "ats": "greenhouse",
   "slug": "myheritage",
-  "guessed": true
- },
- {
-  "name": "Oscar",
-  "ats": "greenhouse",
-  "slug": "oscar",
   "guessed": true
  },
  {
@@ -215,12 +150,6 @@
   "guessed": true
  },
  {
-  "name": "Vega",
-  "ats": "greenhouse",
-  "slug": "vega",
-  "guessed": true
- },
- {
   "name": "VYBS",
   "ats": "greenhouse",
   "slug": "vybs",
@@ -238,27 +167,10 @@
   "slug": "airslate"
  },
  {
-  "name": "Avero",
-  "ats": "lever",
-  "slug": "avero",
-  "guessed": true
- },
- {
-  "name": "BioCatch",
-  "ats": "lever",
-  "slug": "biocatch",
-  "guessed": true
- },
- {
   "name": "Cloudinary",
   "ats": "lever",
   "slug": "cloudinary",
   "guessed": true
- },
- {
-  "name": "Deloitte",
-  "ats": "lever",
-  "slug": "deloitte"
  },
  {
   "name": "logz",

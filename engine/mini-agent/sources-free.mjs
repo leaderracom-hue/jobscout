@@ -110,7 +110,9 @@ export async function discoverAts(companies, { max = 15 } = {}) {
         const base = c.website.replace(/\/+$/, "");
         for (const p of ["", "/careers", "/jobs"]) { const t = await get(base + p, 8000); hit = t && sniffAts(t); if (hit) break; }
       }
-      if (hit) found.push({ name: c.name, ...hit });
+      if (hit && FETCH[hit.ats]) { // keep a new board only if it has open jobs in Israel right now
+        try { const jobs = await FETCH[hit.ats]({ ...hit, name: c.name }); if (jobs.some(j => j.il || IL.test(j.location))) found.push({ name: c.name, ...hit }); } catch {}
+      }
     }
   }));
   return found;

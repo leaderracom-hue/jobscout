@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Job Scout",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Assaf's private job-application helper: shows the Job Scout send queue, fills application forms in this browser and records what was sent. Never submits on its own.",
   "permissions": ["storage", "sidePanel", "tabs", "scripting"],
   "host_permissions": ["<all_urls>"],

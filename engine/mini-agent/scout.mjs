@@ -213,8 +213,8 @@ if (MATCH && results.length) {
   const known = new Set([...JSON.parse(fs.readFileSync(path.join(HERE, "ats-companies.json"), "utf8")),
     ...(extraPath && fs.existsSync(extraPath) ? JSON.parse(fs.readFileSync(extraPath, "utf8")) : [])].map(c => String(c.name).toLowerCase()));
   const cand = new Map();
-  for (const it of raw.linkedin || []) { const n = it.companyName; if (n && !known.has(n.toLowerCase()) && !cand.has(n)) cand.set(n, { name: n, website: it.companyWebsite, applyUrl: it.applyUrl }); }
-  for (const it of raw.indeed || []) { const n = it.employer?.name; if (n && !known.has(n.toLowerCase()) && !cand.has(n)) cand.set(n, { name: n, applyUrl: it.jobUrl }); }
+  for (const it of raw.linkedin || []) { const n = it.companyName; if (n && !known.has(n.toLowerCase()) && !cand.has(n) && !CYBER_C.test(n)) cand.set(n, { name: n, website: it.companyWebsite, applyUrl: it.applyUrl }); }
+  for (const it of raw.indeed || []) { const n = it.employer?.name; if (n && !known.has(n.toLowerCase()) && !cand.has(n) && !CYBER_C.test(n)) cand.set(n, { name: n, applyUrl: it.jobUrl }); }
   const found = cand.size ? await discoverAts([...cand.values()], { max: 15 }) : [];
   fs.writeFileSync(path.join(OUT, "ats-new.json"), JSON.stringify(found, null, 1));
   if (found.length && process.env.JOBENGINE_SERVER !== "1") { // on the PC: add straight to the list

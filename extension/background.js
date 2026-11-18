@@ -10,19 +10,27 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => 
 const norm = s => String(s || "").toLowerCase().replace(/[^a-z֐-׿0-9]/g, "");
 const notify = () => chrome.runtime.sendMessage({ type: "changed" }).catch(() => {});
 
-// which page to open for a job: the company's own application form when we know it
+// Assaf 18 Nov: only systems where you apply WITHOUT creating an account. Workday, iCIMS, Taleo, SuccessFactors,
+// Oracle Cloud and unknown company sites (which may hide one of those) are not opened.
+const NEEDS_ACCOUNT = /myworkdayjobs\.com|workday\.com|icims\.com|taleo\.net|successfactors|sapsf\.|oraclecloud\.com|brassring|kenexa|avature/i;
 export function door(j) {
   const links = { ...(j.links || {}) };
   const urls = [links.apply, links.careers, ...Object.values(links), j.url].filter(Boolean);
+  if (urls.some(u => NEEDS_ACCOUNT.test(u))) return null;
   for (const u of urls) {
     if (/greenhouse\.io/.test(u)) return { kind: "greenhouse", url: u };
     if (/jobs\.(eu\.)?lever\.co\//.test(u)) return { kind: "lever", url: u.replace(/\/(apply)?\/?(\?.*)?$/, "") + "/apply" };
     if (/jobs\.ashbyhq\.com\//.test(u)) return { kind: "ashby", url: u.replace(/\/(application)?\/?(\?.*)?$/, "") + "/application" };
     if (/comeet\.(com|co)\/jobs\//.test(u)) return { kind: "comeet", url: u };
+    if (/apply\.workable\.com\//.test(u)) return { kind: "workable", url: u };
+    if (/jobs\.smartrecruiters\.com\//.test(u)) return { kind: "smartrecruiters", url: u };
+    if (/\.careers\.hibob\.com|\.teamtailor\.com|\.recruitee\.com|\.bamboohr\.com\/careers|\.breezy\.hr|\.jobs\.personio\./.test(u)) return { kind: "no-account-ats", url: u };
   }
-  if (links.careers) return { kind: "careers-site", url: links.careers };
-  if (links.apply) return { kind: "company-site", url: links.apply };
-  return null; // LinkedIn / Drushim / AllJobs only → phases 3–4
+  // a company's own careers page counts only when it embeds Comeet (coref=…) or Greenhouse (gh_jid=…)
+  for (const u of [links.careers, links.apply].filter(Boolean))
+    if (/[?&]coref=|comeet/i.test(u)) return { kind: "comeet", url: u };
+    else if (/[?&]gh_jid=/.test(u)) return { kind: "greenhouse", url: u };
+  return null; // LinkedIn / Drushim / AllJobs only, or a site that may require an account
 }
 
 async function setQueue(key, status, note = "") {
@@ -42,7 +50,7 @@ async function openAndFill(key) {
   if (company && company !== norm("(חסוי)") && Object.values(s.archive).some(a => a.status === "sent" && norm(a.company) === company && new Date(a.at) > since))
     throw new Error("כבר נשלחה הגשה לחברה הזו ב-30 הימים האחרונים");
   const d = door(j);
-  if (!d) { await setQueue(key, "unsupported", "אין דף הגשה של החברה. LinkedIn / דרושים / AllJobs בשלבים הבאים"); throw new Error("אין דף הגשה של החברה עדיין"); }
+  if (!d) { await setQueue(key, "unsupported", "אין טופס הגשה שלא דורש הרשמה (LinkedIn / דרושים / AllJobs בשלבים הבאים)"); throw new Error("אין דף הגשה של החברה עדיין"); }
   const [profile, cvB64] = await Promise.all([loadProfile(), j.cv ? loadCv(j.lang === "he" ? "he" : "en", j.cv) : Promise.resolve(null)]);
   const tab = await chrome.tabs.create({ url: d.url, active: true });
   tracked.set(tab.id, { key, filled: false, sent: false, payload: { profile, cv: cvB64 ? { name: j.cv, b64: cvB64 } : null, lang: j.lang || "en", job: { title: j.title, company: j.company } } });
