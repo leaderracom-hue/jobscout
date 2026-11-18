@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Job Scout</title>
+<style>
+:root{--bg:#f5f6f8;--surface:#fff;--ink:#151a24;--muted:#5b6474;--line:#dde1e8;--accent:#2a55c9;--accent-soft:#e7edfb;--ok:#16794a;--ok-soft:#e3f3ea;--warn:#9a5b00;--warn-soft:#fbf0dc;--bad:#b3322f;--bad-soft:#fbe7e6}
+@media (prefers-color-scheme:dark){:root{--bg:#10131a;--surface:#171b24;--ink:#e7eaf0;--muted:#9aa3b2;--line:#2a303c;--accent:#7d9cf0;--accent-soft:#1f2a45;--ok:#5cc58f;--ok-soft:#173326;--warn:#e3a94a;--warn-soft:#352812;--bad:#ef7d78;--bad-soft:#3a1d1c;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Heebo",system-ui,sans-serif;padding:12px}
+h1{font-size:18px;margin:0}
+.head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px}
+.muted{color:var(--muted)} .small{font-size:12px}
+button{font:inherit;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:5px 10px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.job{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.row{display:flex;gap:8px;align-items:flex-start}
+.fit{font-family:ui-monospace,monospace;font-weight:600;border-radius:7px;padding:3px 7px;font-size:13px;flex:none}
+.f-hi{background:var(--ok-soft);color:var(--ok)} .f-mid{background:var(--warn-soft);color:var(--warn)} .f-lo{background:var(--bad-soft);color:var(--bad)}
+.t{font-weight:600} .t a{color:inherit;text-decoration:none}
+.status{font-size:12px;border-radius:6px;padding:2px 7px;display:inline-block}
+.s-ready{background:var(--accent-soft);color:var(--accent)} .s-needs_you,.s-unsupported{background:var(--warn-soft);color:var(--warn)} .s-failed{background:var(--bad-soft);color:var(--bad)} .s-queued,.s-skipped{background:var(--bg);color:var(--muted)}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.err{color:var(--bad);font-size:12px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:10px}
+summary{cursor:pointer;font-weight:600}
+label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);margin-top:8px}
+input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink)}
+.empty{padding:20px 8px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="head"><h1>Job Scout</h1><span class="small muted" id="counts"></span></div>
+
+<details id="settings">
+  <summary>הגדרות</summary>
+  <label for="tok">טוקן GitHub (אותו טוקן כמו ב-Streamlit, גישה ל-jobscout-data)<input id="tok" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+  <label for="repo">מאגר הנתונים<input id="repo" placeholder="leaderracom-hue/jobscout-data"></label>
+  <div style="display:flex;gap:6px;margin-top:8px"><button id="save" class="primary">שמור</button><span id="saved" class="small muted"></span></div>
+  <p class="small muted" style="margin:8px 0 0">נשמר רק בדפדפן הזה. התוסף לא שולח לשום מקום חוץ מ-GitHub.</p>
+</details>
+
+<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
+  <button id="refresh">רענן</button>
+  <a class="small" href="https://jobscoutsearch.streamlit.app" target="_blank" rel="noopener">פתח את Job Scout להוספת משרות לתור</a>
+</div>
+<div id="err" class="err"></div>
+<div id="list"><div class="empty">טוען…</div></div>
+
+<script src="sidepanel.js"></script>
+</body>
+</html>
