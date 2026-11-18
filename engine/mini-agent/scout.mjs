@@ -29,9 +29,9 @@ const HE = flag("he", entry.he || "");
 const LOC = flag("loc", "all");
 const DAYS = +flag("days", 7);
 const ROWS = +flag("rows", 30);
-const ROWS_DEFAULT = { linkedin: 70, alljobs: 70, indeed: 70 }; // Assaf 12 Nov: up to 70 per board
+const ROWS_DEFAULT = { linkedin: 70, alljobs: 40, jobmaster: 40, indeed: 70 }; // Assaf 12 Nov: 70 per board; 18 Nov: AllJobs 40 (70 + full details never finished), JobMaster 40
 const R = b => (flag("rows", false) ? ROWS : ROWS_DEFAULT[b] || ROWS);
-const BOARDS = String(flag("free", false) ? "drushim,careers" : flag("boards", "linkedin,indeed,drushim,alljobs,careers")).split(",").map(s => s.trim()).filter(Boolean);
+const BOARDS = String(flag("free", false) ? "drushim,careers" : flag("boards", "linkedin,drushim,alljobs,jobmaster,careers")).split(",").map(s => s.trim()).filter(Boolean);
 const DRY = !!flag("dry", false), MATCH = !!flag("match", false), ALL_TITLES = !!flag("all-titles", false);
 const REPLAY = flag("replay", "");
 
@@ -46,7 +46,7 @@ const ACTORS = {
   indeed:   { id: "valig/indeed-jobs-scraper", perItem: 0.0001, start: 0.001, runs: () => [{ country: "il", title: SEARCH, limit: R("indeed"), datePosted: NEAR(DAYS) }] },
   drushimapify: { id: "blackfalcondata/drushim-scraper", perItem: 0.002, start: 0.01, runs: () => [{ query: SEARCH, maxResults: HE ? half : ROWS, maxPages: 3 }, ...(HE ? [{ query: HE, maxResults: half, maxPages: 3 }] : [])] },
   alljobs:  { id: "getascraper/alljobs-scraper", perItem: 0.0018, runs: () => [{ keywords: [SEARCH, HE].filter(Boolean), maxItems: R("alljobs"), postedWithinDays: DAYS, detailMode: "always" }] },
-  jobmaster:{ id: "getascraper/jobmaster-scraper", perItem: 0.0015, runs: () => [{ searchQueries: [SEARCH, HE].filter(Boolean), maxItems: ROWS, maxItemsPerQuery: HE ? half : ROWS, sortBy: "newest" }] },
+  jobmaster:{ id: "getascraper/jobmaster-scraper", perItem: 0.0015, runs: () => [{ searchQueries: [SEARCH, HE].filter(Boolean), maxItems: R("jobmaster"), maxItemsPerQuery: HE ? Math.ceil(R("jobmaster") / 2) : R("jobmaster"), sortBy: "newest" }] },
 };
 const FREE = {
   drushim: () => drushimFree([...new Set([SEARCH, HE, ...(entry.drushimQueries || [])].filter(Boolean))], { pages: 3 }), // Drushim ranks by relevance, so breadth = freshness
@@ -129,7 +129,7 @@ const T = env.APIFY_API_TOKEN;
 async function apify(pathname, init) { const r = await fetch("https://api.apify.com/v2" + pathname + (pathname.includes("?") ? "&" : "?") + "token=" + T, init); return r.json(); }
 // timeoutSecs: Apify stops the run there and keeps every job already saved (pay-per-result → you pay only for those).
 // AllJobs fetches each job page and was the slowest source (~2 min); LinkedIn ~40–65 s. Capping both halves a search.
-const TIMEOUT = { "getascraper/alljobs-scraper": 75, "bebity/linkedin-jobs-scraper": 90 }; // 70 rows need a little longer
+const TIMEOUT = { "getascraper/alljobs-scraper": 180, "bebity/linkedin-jobs-scraper": 90 }; // 18 Nov: AllJobs 75s timed out with nothing saved -> 40 rows, 180s
 async function runActor(id, input) {
   const start = await apify(`/acts/${id.replace("/", "~")}/runs?waitForFinish=60&maxTotalChargeUsd=0.25${TIMEOUT[id] ? "&timeout=" + TIMEOUT[id] : ""}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
   let run = start.data; if (!run) throw new Error("start failed: " + JSON.stringify(start.error || start).slice(0, 200));

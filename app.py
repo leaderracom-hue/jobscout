@@ -42,7 +42,7 @@ LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automati
 WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע"}
 MIN_FIT = 45  # Assaf 11 Nov: a score under 45 goes straight to the archive ("auto")
 HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
-BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "careers": "דף קריירה"}
+BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "jobmaster": "JobMaster", "careers": "דף קריירה"}
 
 st.set_page_config(page_title="Job Scout", page_icon=":material/work:", layout="wide")
 st.markdown("""<style>
