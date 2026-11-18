@@ -403,13 +403,14 @@ def queue_set(key, status=None):
     update_state(m, f"queue {status or 'remove'}: {key}")
 
 
-def card(j, arc=False, queued=None):
+def card(j, arc=False, queued=None, new=False):
     fit = j.get("fit")
     cls = "f-na" if fit is None else "f-hi" if fit >= 80 else "f-mid" if fit >= 60 else "f-lo"
     with st.container(border=True):
         c1, c2, c3 = st.columns([1, 7, 3], vertical_alignment="top")
         c1.markdown(f'<div class="fit {cls}">{fit if fit is not None else "—"}<small>התאמה</small></div>', unsafe_allow_html=True)
-        tags = "".join(f'<span class="tag">{BOARD.get(b, b)}</span>' for b in j.get("boards", []))
+        tags = '<span class="tag" style="color:#fff;background:#2a55c9;border-color:#2a55c9">חדשה</span>' if new else ""
+        tags += "".join(f'<span class="tag">{BOARD.get(b, b)}</span>' for b in j.get("boards", []))
         if j.get("easyApply"):
             tags += '<span class="tag" style="color:#16794a">Easy Apply</span>'
         if arc:
@@ -482,9 +483,10 @@ picked = st.pills("מילות חיפוש (אפשר כמה)", KEYWORDS, format_fu
 free = st.text_input("מילים נוספות (מופרדות בפסיק)", key="kw_free", placeholder="למשל: lifecycle marketing, מנהל CRM")
 kws = list(dict.fromkeys(list(picked) + [w.strip().lower() for w in free.split(",") if w.strip()]))
 st.session_state.kws_picked = list(picked)
-c1, c2 = st.columns(2)
+c1, c2, c3 = st.columns([2, 2, 1], vertical_alignment="bottom")
 win = c1.segmented_control("פורסם ב-", list(WINDOWS), format_func=lambda h: WINDOWS[h], default=48, key="win") or 0
 sort = c2.segmented_control("מיון", ["fit", "new"], format_func=lambda s: "התאמה" if s == "fit" else "הכי חדש", default="fit", key="sort") or "fit"
+only_new = c3.toggle("רק חדשות", key="only_new", help="רק משרות שנמצאו בחיפוש האחרון")
 
 PHASE = {"queued": "ממתין", "pulling": "מושך משרות", "scoring": "מדרג וקורות חיים", "done": "הסתיים", "error": "נכשל"}
 active = [i for i in SH["batches"].values() if not i["done"]]
@@ -626,6 +628,13 @@ def body():
     else:
         mine = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue and any(k in j.get("kws", []) for k in view_kws)]
         shown = [j for j in mine if not win or age_h(j) <= win + (0 if j.get("dayOnly") else 1)]
+    # "new" = found by the latest search batch (Assaf 18 Nov): its earliest finished keyword marks the start
+    runs_ = s.get("runs", [])
+    last_b = max(runs_, key=lambda r: r["at"]).get("batch") if runs_ else None
+    new_since = min((r["at"] for r in runs_ if last_b and r.get("batch") == last_b), default="9999")
+    is_new = lambda j: (j.get("foundAt") or "") >= new_since
+    if only_new:
+        shown = [j for j in shown if is_new(j)]
     shown.sort(key=(lambda j: (-(j.get("fit") if j.get("fit") is not None else -1), age_h(j))) if sort == "fit" else age_h)
     qjobs = sorted(({**s["jobs"].get(k, {"title": "?"}), "key": k, "_q": q} for k, q in queue.items() if k not in s["archive"]),
                    key=lambda j: j["_q"].get("at", ""), reverse=True)
@@ -643,6 +652,8 @@ def body():
                 st.info("החיפוש רץ. משרות חדשות יופיעו כאן ברגע שכל מילה מסתיימת.")
             elif hist:
                 st.info("כל המשרות מהחיפוש הזה כבר בארכיון או בתור.")
+            elif only_new:
+                st.info("אין משרות חדשות מהחיפוש האחרון במילים ובחלון שבחרת. כבה \"רק חדשות\" כדי לראות את כל המשרות הפתוחות.")
             else:
                 hidden = len(mine)
                 ran = any(r["kw"] in view_kws for r in s.get("runs", []))
@@ -655,7 +666,7 @@ def body():
                 else:
                     st.info("אין משרות פתוחות למילים שבחרת." if ran else "עוד לא חיפשת את המילים האלה. החיפוש ירוץ רק כשתלחץ \"חפש\".")
         for j in shown:
-            card(j)
+            card(j, new=is_new(j))
         if not hist and shown and len(mine) > len(shown):
             st.caption(f"{len(mine) - len(shown)} משרות ישנות יותר מ-{WINDOWS[win]} מוסתרות")
     with tq:
