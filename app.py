@@ -686,7 +686,32 @@ def body():
                             f"לחץ \"היסטוריה\" ליד המילה כדי לראות אותן ולהחזיר.")
                 else:
                     st.info("אין משרות פתוחות. כל מה שנמצא כבר סומן כנשלח או הוסר." if ran else "אין משרות פתוחות. החיפוש ירוץ רק כשתלחץ \"חפש\".")
-        if shown:
+        # Assaf 18 Nov: page size 10 / 25 / 50 + "showing X–Y of Z"; bulk actions work on the page on screen
+        n_all = len(shown)
+        p1, p2 = st.columns([2, 3], vertical_alignment="bottom")
+        size = p1.segmented_control("תוצאות בעמוד", [10, 25, 50], default=25, key="page_size") or 25
+        pages = max(1, -(-n_all // size))
+        sig = (age, only_new, sort, size, n_all if hist else 0)
+        if st.session_state.get("page_sig") != sig:
+            st.session_state.page_sig, st.session_state.page = sig, 1
+        page = min(max(1, st.session_state.get("page", 1)), pages)
+        lo, hi = (page - 1) * size, min(page * size, n_all)
+        p2.markdown(f"**מציג {lo + 1 if n_all else 0}–{hi} מתוך {n_all}** · עמוד {page} מתוך {pages}")
+        page_jobs = shown[lo:hi]
+
+        def nav(where):
+            a_, b_, c_ = st.columns([1, 2, 1], vertical_alignment="center")
+            if a_.button("→ הקודם", key=f"pg_prev_{where}", disabled=page <= 1, use_container_width=True):
+                st.session_state.page = page - 1
+                st.rerun()
+            b_.caption(f"עמוד {page} מתוך {pages}")
+            if c_.button("הבא ←", key=f"pg_next_{where}", disabled=page >= pages, use_container_width=True):
+                st.session_state.page = page + 1
+                st.rerun()
+        if pages > 1:
+            nav("top")
+        if page_jobs:
+            shown_all, shown = shown, page_jobs
             sel = [j["key"] for j in shown if st.session_state.get(f"sel-{j['key']}")]
             b1, b2, b3 = st.columns([2, 2, 3], vertical_alignment="center")
             if b1.button(f"הסר מסומנות ({len(sel)})", key="rm_sel", disabled=not sel, use_container_width=True):
@@ -695,7 +720,7 @@ def body():
                     st.session_state.pop(f"sel-{k}", None)
                 st.rerun()
             if st.session_state.get("rm_all_ask"):
-                b3.warning(f"להסיר את כל {len(shown)} המשרות שמוצגות עכשיו?")
+                b3.warning(f"להסיר את כל {len(shown)} המשרות שבעמוד הזה?")
                 y, n = b3.columns(2)
                 if y.button("כן, הסר הכל", key="rm_all_yes", type="primary", use_container_width=True):
                     keys = [j["key"] for j in shown]
@@ -707,11 +732,13 @@ def body():
                 if n.button("ביטול", key="rm_all_no", use_container_width=True):
                     st.session_state.pop("rm_all_ask", None)
                     st.rerun()
-            elif b2.button(f"הסר הכל ({len(shown)})", key="rm_all", use_container_width=True, help="מסיר את כל המשרות שמוצגות עכשיו, לפי הסינון שבחרת"):
+            elif b2.button(f"הסר הכל בעמוד ({len(shown)})", key="rm_all", use_container_width=True, help="מסיר את כל המשרות שבעמוד הזה"):
                 st.session_state.rm_all_ask = True
                 st.rerun()
-        for j in shown:
+        for j in page_jobs:
             card(j, new=is_new(j))
+        if pages > 1:
+            nav("bottom")
     with tq:
         if not qjobs:
             st.info("התור ריק. לחץ \"לשליחה ←\" על משרה בתוצאות, ואז הפעל את סוכן השליחה במחשב שלך.")
