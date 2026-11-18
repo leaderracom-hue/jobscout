@@ -66,7 +66,7 @@ async function ashby(c) {
 }
 const FETCH = { comeet, greenhouse, lever, ashby };
 
-export async function careers({ concurrency = 6 } = {}) {
+export async function careers({ concurrency = 16 } = {}) {
   const extra = process.env.JOBSCOUT_ATS_EXTRA && fs.existsSync(process.env.JOBSCOUT_ATS_EXTRA) ? JSON.parse(fs.readFileSync(process.env.JOBSCOUT_ATS_EXTRA, "utf8")) : [];
   const seen = new Set(); const list = [...JSON.parse(fs.readFileSync(path.join(HERE, "ats-companies.json"), "utf8")), ...extra].filter(c => FETCH[c.ats] && !seen.has(c.ats + c.slug) && seen.add(c.ats + c.slug));
   // the boards are the same for every keyword: fetch them once per 30 minutes and reuse (a multi-keyword search pays this once)

@@ -1,5 +1,47 @@
 [
  {
+  "name": "4m",
+  "ats": "ashby",
+  "slug": "4m",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "airwallex",
+  "ats": "ashby",
+  "slug": "airwallex",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "april",
+  "ats": "ashby",
+  "slug": "april",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "arago",
+  "ats": "ashby",
+  "slug": "arago",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "artemis",
+  "ats": "ashby",
+  "slug": "artemis",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "bay",
+  "ats": "ashby",
+  "slug": "bay",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "beach-bum",
+  "ats": "ashby",
+  "slug": "beach-bum",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "brandlight",
   "ats": "ashby",
   "slug": "brandlight"
@@ -10,10 +52,118 @@
   "slug": "camunda"
  },
  {
+  "name": "chainalysis-careers",
+  "ats": "ashby",
+  "slug": "chainalysis-careers",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "chalk",
+  "ats": "ashby",
+  "slug": "chalk",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "chamelio",
+  "ats": "ashby",
+  "slug": "chamelio",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "clickhouse",
+  "ats": "ashby",
+  "slug": "clickhouse",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "coinflow",
+  "ats": "ashby",
+  "slug": "coinflow",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "doorloop",
+  "ats": "ashby",
+  "slug": "doorloop",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "duck-duck-go",
+  "ats": "ashby",
+  "slug": "duck-duck-go",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "echo.ai",
+  "ats": "ashby",
+  "slug": "echo.ai",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "enclave",
+  "ats": "ashby",
+  "slug": "enclave",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "Finout",
   "ats": "ashby",
   "slug": "finout",
   "guessed": true
+ },
+ {
+  "name": "fundamental",
+  "ats": "ashby",
+  "slug": "fundamental",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "fundwell",
+  "ats": "ashby",
+  "slug": "fundwell",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "harmony",
+  "ats": "ashby",
+  "slug": "harmony",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "human",
+  "ats": "ashby",
+  "slug": "human",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "huskeys",
+  "ats": "ashby",
+  "slug": "huskeys",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "incrmntal",
+  "ats": "ashby",
+  "slug": "incrmntal",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "irregular",
+  "ats": "ashby",
+  "slug": "irregular",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "jiga",
+  "ats": "ashby",
+  "slug": "jiga",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "ledge",
+  "ats": "ashby",
+  "slug": "ledge",
+  "source": "google-2026-11-18"
  },
  {
   "name": "Lemonade",
@@ -22,9 +172,75 @@
   "guessed": true
  },
  {
+  "name": "levhaolam",
+  "ats": "ashby",
+  "slug": "levhaolam",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "lilt-production",
+  "ats": "ashby",
+  "slug": "lilt-production",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "loora",
+  "ats": "ashby",
+  "slug": "loora",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "matia",
+  "ats": "ashby",
+  "slug": "matia",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "matx",
+  "ats": "ashby",
+  "slug": "matx",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "monday.com",
   "ats": "ashby",
   "slug": "monday.com"
+ },
+ {
+  "name": "moonactive",
+  "ats": "ashby",
+  "slug": "moonactive",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "nexxen",
+  "ats": "ashby",
+  "slug": "nexxen",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "novidea",
+  "ats": "ashby",
+  "slug": "novidea",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "oak",
+  "ats": "ashby",
+  "slug": "oak",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "omnea",
+  "ats": "ashby",
+  "slug": "omnea",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "originhq",
+  "ats": "ashby",
+  "slug": "originhq",
+  "source": "google-2026-11-18"
  },
  {
   "name": "SeatPick",
@@ -33,10 +249,275 @@
   "guessed": true
  },
  {
+  "name": "shapes",
+  "ats": "ashby",
+  "slug": "shapes",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "stigg",
+  "ats": "ashby",
+  "slug": "stigg",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "traysar",
+  "ats": "ashby",
+  "slug": "traysar",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "triedge-investments",
+  "ats": "ashby",
+  "slug": "triedge-investments",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "viz.ai",
+  "ats": "ashby",
+  "slug": "viz.ai",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "voodoo",
+  "ats": "ashby",
+  "slug": "voodoo",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "zip",
+  "ats": "ashby",
+  "slug": "zip",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "abra",
+  "ats": "comeet",
+  "slug": "abra",
+  "uid": "12.003",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "agora",
+  "ats": "comeet",
+  "slug": "agora",
+  "uid": "08.007",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "airhaifa",
+  "ats": "comeet",
+  "slug": "airhaifa",
+  "uid": "5A.008",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "airobotics",
+  "ats": "comeet",
+  "slug": "airobotics",
+  "uid": "AA.005",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "aitan",
+  "ats": "comeet",
+  "slug": "aitan",
+  "uid": "FA.006",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "alice",
+  "ats": "comeet",
+  "slug": "alice",
+  "uid": "D5.005",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "appcharge",
+  "ats": "comeet",
+  "slug": "appcharge",
+  "uid": "9A.00B",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "appsforce",
+  "ats": "comeet",
+  "slug": "appsforce",
+  "uid": "09.00C",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "arpeely",
+  "ats": "comeet",
+  "slug": "arpeely",
+  "uid": "57.001",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "artlist",
+  "ats": "comeet",
+  "slug": "artlist",
+  "uid": "85.003",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "avatrade",
+  "ats": "comeet",
+  "slug": "avatrade",
+  "uid": "6A.00A",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "bridgewise",
+  "ats": "comeet",
+  "slug": "bridgewise",
+  "uid": "F9.009",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "caesarstone",
+  "ats": "comeet",
+  "slug": "caesarstone",
+  "uid": "25.000",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "classiq",
+  "ats": "comeet",
+  "slug": "classiq",
+  "uid": "F7.008",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "codevalue",
+  "ats": "comeet",
+  "slug": "codevalue",
+  "uid": "81.009",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "comm-it",
+  "ats": "comeet",
+  "slug": "comm-it",
+  "uid": "76.008",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "coralogix",
+  "ats": "comeet",
+  "slug": "coralogix",
+  "uid": "06.004",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "crossriver",
+  "ats": "comeet",
+  "slug": "crossriver",
+  "uid": "C7.00F",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "dealhub",
+  "ats": "comeet",
+  "slug": "dealhub",
+  "uid": "86.005",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "deloitte",
+  "ats": "comeet",
+  "slug": "deloitte",
+  "uid": "F7.00B",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "dualbird",
+  "ats": "comeet",
+  "slug": "dualbird",
+  "uid": "2B.00C",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "earnix",
+  "ats": "comeet",
+  "slug": "earnix",
+  "uid": "93.00B",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "eitanmedical",
+  "ats": "comeet",
+  "slug": "eitanmedical",
+  "uid": "C6.00F",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "elementor",
+  "ats": "comeet",
+  "slug": "elementor",
+  "uid": "A3.00F",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "elsight",
+  "ats": "comeet",
+  "slug": "elsight",
+  "uid": "B9.006",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "enercon",
+  "ats": "comeet",
+  "slug": "enercon",
+  "uid": "A4.00D",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "enlightenergy",
   "ats": "comeet",
   "slug": "enlightenergy",
   "uid": "99.006"
+ },
+ {
+  "name": "exodigo",
+  "ats": "comeet",
+  "slug": "exodigo",
+  "uid": "89.005",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "factify",
+  "ats": "comeet",
+  "slug": "factify",
+  "uid": "A9.00F",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "fetcherr",
+  "ats": "comeet",
+  "slug": "fetcherr",
+  "uid": "68.006",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "gett",
+  "ats": "comeet",
+  "slug": "gett",
+  "uid": "A0.002",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "global-e",
+  "ats": "comeet",
+  "slug": "global-e",
+  "uid": "62.002",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "Guardio",
+  "ats": "comeet",
+  "slug": "guardio",
+  "uid": "57.000"
  },
  {
   "name": "guesty",
@@ -51,10 +532,94 @@
   "uid": "3A.008"
  },
  {
+  "name": "ilyon",
+  "ats": "comeet",
+  "slug": "ilyon",
+  "uid": "42.00A",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "immunai",
+  "ats": "comeet",
+  "slug": "immunai",
+  "uid": "37.009",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "Infinidat",
   "ats": "comeet",
   "slug": "infinidat",
   "uid": "D6.003"
+ },
+ {
+  "name": "investing",
+  "ats": "comeet",
+  "slug": "investing",
+  "uid": "42.002",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "jafi",
+  "ats": "comeet",
+  "slug": "jafi",
+  "uid": "C8.008",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "jdc",
+  "ats": "comeet",
+  "slug": "jdc",
+  "uid": "F3.004",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "jeenai",
+  "ats": "comeet",
+  "slug": "jeenai",
+  "uid": "DA.008",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "joinattil",
+  "ats": "comeet",
+  "slug": "joinattil",
+  "uid": "38.00A",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "kelatechnologies",
+  "ats": "comeet",
+  "slug": "kelatechnologies",
+  "uid": "2A.007",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "keshet",
+  "ats": "comeet",
+  "slug": "keshet",
+  "uid": "26.009",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "lab42",
+  "ats": "comeet",
+  "slug": "lab42",
+  "uid": "58.001",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "lemalabs",
+  "ats": "comeet",
+  "slug": "lemalabs",
+  "uid": "EA.001",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "medison",
+  "ats": "comeet",
+  "slug": "medison",
+  "uid": "67.00A",
+  "source": "google-2026-11-18"
  },
  {
   "name": "Minute",
@@ -63,10 +628,59 @@
   "uid": "45.00A"
  },
  {
+  "name": "mprest",
+  "ats": "comeet",
+  "slug": "mprest",
+  "uid": "38.005",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "Navina",
   "ats": "comeet",
   "slug": "navina",
   "uid": "E6.00C"
+ },
+ {
+  "name": "nayax",
+  "ats": "comeet",
+  "slug": "nayax",
+  "uid": "13.009",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "newcore",
+  "ats": "comeet",
+  "slug": "newcore",
+  "uid": "4B.00D",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "notch",
+  "ats": "comeet",
+  "slug": "notch",
+  "uid": "CA.003",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "orbit_communication_systems",
+  "ats": "comeet",
+  "slug": "orbit_communication_systems",
+  "uid": "2B.008",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "oriient",
+  "ats": "comeet",
+  "slug": "oriient",
+  "uid": "EA.005",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "ourcrowd",
+  "ats": "comeet",
+  "slug": "ourcrowd",
+  "uid": "D3.00A",
+  "source": "google-2026-11-18"
  },
  {
   "name": "pango",
@@ -75,10 +689,156 @@
   "uid": "59.002"
  },
  {
+  "name": "papayaglobal",
+  "ats": "comeet",
+  "slug": "papayaglobal",
+  "uid": "16.005",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "paragon",
+  "ats": "comeet",
+  "slug": "paragon",
+  "uid": "76.006",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "passportcard",
+  "ats": "comeet",
+  "slug": "passportcard",
+  "uid": "92.00A",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "pikoya",
+  "ats": "comeet",
+  "slug": "pikoya",
+  "uid": "76.002",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "pipl",
+  "ats": "comeet",
+  "slug": "pipl",
+  "uid": "22.008",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "plaee",
+  "ats": "comeet",
+  "slug": "plaee",
+  "uid": "5B.004",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "plus500",
+  "ats": "comeet",
+  "slug": "plus500",
+  "uid": "A1.00F",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "quicklizard",
+  "ats": "comeet",
+  "slug": "quicklizard",
+  "uid": "C9.004",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "realplay",
   "ats": "comeet",
   "slug": "realplay",
   "uid": "9A.003"
+ },
+ {
+  "name": "rounds",
+  "ats": "comeet",
+  "slug": "rounds",
+  "uid": "59.005",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "samsung",
+  "ats": "comeet",
+  "slug": "samsung",
+  "uid": "D4.005",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "saymine",
+  "ats": "comeet",
+  "slug": "saymine",
+  "uid": "39.003",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "Sedric",
+  "ats": "comeet",
+  "slug": "sedric",
+  "uid": "0A.00F"
+ },
+ {
+  "name": "sett",
+  "ats": "comeet",
+  "slug": "sett",
+  "uid": "4A.00B",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "solaredge",
+  "ats": "comeet",
+  "slug": "solaredge",
+  "uid": "71.00A",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "somekhchaikin",
+  "ats": "comeet",
+  "slug": "somekhchaikin",
+  "uid": "F3.007",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "sunflower",
+  "ats": "comeet",
+  "slug": "sunflower",
+  "uid": "AA.009",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "taropharmaceuticalindustries",
+  "ats": "comeet",
+  "slug": "taropharmaceuticalindustries",
+  "uid": "9A.00A",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "topgummiceuticals",
+  "ats": "comeet",
+  "slug": "topgummiceuticals",
+  "uid": "E9.00A",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "upstream",
+  "ats": "comeet",
+  "slug": "upstream",
+  "uid": "E4.003",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "vastdata",
+  "ats": "comeet",
+  "slug": "vastdata",
+  "uid": "43.001",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "vega",
+  "ats": "comeet",
+  "slug": "vega",
+  "uid": "C9.009",
+  "source": "google-2026-11-18"
  },
  {
   "name": "Voyantis",
@@ -87,14 +847,104 @@
   "uid": "86.00B"
  },
  {
+  "name": "weski",
+  "ats": "comeet",
+  "slug": "weski",
+  "uid": "F8.00C",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "wiliot",
+  "ats": "comeet",
+  "slug": "wiliot",
+  "uid": "F6.003",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "winbond",
+  "ats": "comeet",
+  "slug": "winbond",
+  "uid": "9A.009",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "xsightlabs",
+  "ats": "comeet",
+  "slug": "xsightlabs",
+  "uid": "46.00C",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "zeroport",
+  "ats": "comeet",
+  "slug": "zeroport",
+  "uid": "7A.00E",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "zim",
+  "ats": "comeet",
+  "slug": "zim",
+  "uid": "72.008",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "aidocmedical",
+  "ats": "greenhouse",
+  "slug": "aidocmedical",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "alfredbeneschco",
+  "ats": "greenhouse",
+  "slug": "alfredbeneschco",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "alta",
+  "ats": "greenhouse",
+  "slug": "alta",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "appsflyer",
+  "ats": "greenhouse",
+  "slug": "appsflyer",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "asm",
+  "ats": "greenhouse",
+  "slug": "asm",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "asteralabs",
+  "ats": "greenhouse",
+  "slug": "asteralabs",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "autods",
   "ats": "greenhouse",
   "slug": "autods"
  },
  {
+  "name": "bluevineisrael",
+  "ats": "greenhouse",
+  "slug": "bluevineisrael",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "canonical_managed_posts",
   "ats": "greenhouse",
   "slug": "canonical_managed_posts"
+ },
+ {
+  "name": "carvana",
+  "ats": "greenhouse",
+  "slug": "carvana",
+  "source": "google-2026-11-18"
  },
  {
   "name": "Connecteam",
@@ -103,10 +953,34 @@
   "guessed": true
  },
  {
+  "name": "databricks",
+  "ats": "greenhouse",
+  "slug": "databricks",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "datarails",
+  "ats": "greenhouse",
+  "slug": "datarails",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "Duda",
   "ats": "greenhouse",
   "slug": "duda",
   "guessed": true
+ },
+ {
+  "name": "elastic",
+  "ats": "greenhouse",
+  "slug": "elastic",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "electreon",
+  "ats": "greenhouse",
+  "slug": "electreon",
+  "source": "google-2026-11-18"
  },
  {
   "name": "Eleos Health",
@@ -115,9 +989,51 @@
   "guessed": true
  },
  {
+  "name": "figma",
+  "ats": "greenhouse",
+  "slug": "figma",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "fireblocks",
+  "ats": "greenhouse",
+  "slug": "fireblocks",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "genscript",
+  "ats": "greenhouse",
+  "slug": "genscript",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "gongio",
+  "ats": "greenhouse",
+  "slug": "gongio",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "grafanalabs",
+  "ats": "greenhouse",
+  "slug": "grafanalabs",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "Guidde",
   "ats": "greenhouse",
   "slug": "guidde"
+ },
+ {
+  "name": "helloheart",
+  "ats": "greenhouse",
+  "slug": "helloheart",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "imafinancialgroup",
+  "ats": "greenhouse",
+  "slug": "imafinancialgroup",
+  "source": "google-2026-11-18"
  },
  {
   "name": "JFrog",
@@ -126,10 +1042,70 @@
   "guessed": true
  },
  {
+  "name": "ltx",
+  "ats": "greenhouse",
+  "slug": "ltx",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "mongodb",
+  "ats": "greenhouse",
+  "slug": "mongodb",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "MyHeritage",
   "ats": "greenhouse",
   "slug": "myheritage",
   "guessed": true
+ },
+ {
+  "name": "nebius",
+  "ats": "greenhouse",
+  "slug": "nebius",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "nextinsurance66",
+  "ats": "greenhouse",
+  "slug": "nextinsurance66",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "obligo",
+  "ats": "greenhouse",
+  "slug": "obligo",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "pagayais",
+  "ats": "greenhouse",
+  "slug": "pagayais",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "pendo",
+  "ats": "greenhouse",
+  "slug": "pendo",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "placerlabs",
+  "ats": "greenhouse",
+  "slug": "placerlabs",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "playtikaltd",
+  "ats": "greenhouse",
+  "slug": "playtikaltd",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "pontera",
+  "ats": "greenhouse",
+  "slug": "pontera",
+  "source": "google-2026-11-18"
  },
  {
   "name": "Riskified",
@@ -138,16 +1114,81 @@
   "guessed": true
  },
  {
+  "name": "rubrik",
+  "ats": "greenhouse",
+  "slug": "rubrik",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "sayari",
+  "ats": "greenhouse",
+  "slug": "sayari",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "scopely",
+  "ats": "greenhouse",
+  "slug": "scopely",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "Similarweb",
+  "ats": "greenhouse",
+  "slug": "similarweb"
+ },
+ {
+  "name": "stripe",
+  "ats": "greenhouse",
+  "slug": "stripe",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "Taboola",
   "ats": "greenhouse",
   "slug": "taboola",
   "guessed": true
  },
  {
+  "name": "telnyx54",
+  "ats": "greenhouse",
+  "slug": "telnyx54",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "triplewhale",
+  "ats": "greenhouse",
+  "slug": "triplewhale",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "TSG",
   "ats": "greenhouse",
   "slug": "tsg",
   "guessed": true
+ },
+ {
+  "name": "unframe",
+  "ats": "greenhouse",
+  "slug": "unframe",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "veracyte",
+  "ats": "greenhouse",
+  "slug": "veracyte",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "verifone",
+  "ats": "greenhouse",
+  "slug": "verifone",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "via",
+  "ats": "greenhouse",
+  "slug": "via",
+  "source": "google-2026-11-18"
  },
  {
   "name": "VYBS",
@@ -162,15 +1203,57 @@
   "guessed": true
  },
  {
+  "name": "woltisrael",
+  "ats": "greenhouse",
+  "slug": "woltisrael",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "worldquant",
+  "ats": "greenhouse",
+  "slug": "worldquant",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "yotpo",
+  "ats": "greenhouse",
+  "slug": "yotpo",
+  "source": "google-2026-11-18"
+ },
+ {
   "name": "airslate",
   "ats": "lever",
   "slug": "airslate"
+ },
+ {
+  "name": "bisnow",
+  "ats": "lever",
+  "slug": "bisnow",
+  "source": "google-2026-11-18"
  },
  {
   "name": "Cloudinary",
   "ats": "lever",
   "slug": "cloudinary",
   "guessed": true
+ },
+ {
+  "name": "houzz",
+  "ats": "lever",
+  "slug": "houzz",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "idt",
+  "ats": "lever",
+  "slug": "idt",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "lendbuzz",
+  "ats": "lever",
+  "slug": "lendbuzz",
+  "source": "google-2026-11-18"
  },
  {
   "name": "logz",
@@ -186,5 +1269,35 @@
   "name": "Parallel Wireless",
   "ats": "lever",
   "slug": "parallelwireless"
+ },
+ {
+  "name": "rws",
+  "ats": "lever",
+  "slug": "rws",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "terrific-innovation",
+  "ats": "lever",
+  "slug": "terrific-innovation",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "tonkean",
+  "ats": "lever",
+  "slug": "tonkean",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "walkme",
+  "ats": "lever",
+  "slug": "walkme",
+  "source": "google-2026-11-18"
+ },
+ {
+  "name": "z1tech",
+  "ats": "lever",
+  "slug": "z1tech",
+  "source": "google-2026-11-18"
  }
 ]
