@@ -410,6 +410,7 @@ def card(j, arc=False, queued=None, new=False):
         c1, c2, c3 = st.columns([1, 7, 3], vertical_alignment="top")
         c1.markdown(f'<div class="fit {cls}">{fit if fit is not None else "—"}<small>התאמה</small></div>', unsafe_allow_html=True)
         tags = '<span class="tag" style="color:#fff;background:#2a55c9;border-color:#2a55c9">חדשה</span>' if new else ""
+        tags += "".join(f'<span class="tag" style="color:#7a3fb0;border-color:#c9a8e8">{LABEL.get(k, k)}</span>' for k in j.get("kws", []))  # search keyword(s) that found it
         tags += "".join(f'<span class="tag">{BOARD.get(b, b)}</span>' for b in j.get("boards", []))
         if j.get("easyApply"):
             tags += '<span class="tag" style="color:#16794a">Easy Apply</span>'
@@ -484,7 +485,7 @@ free = st.text_input("מילים נוספות (מופרדות בפסיק)", key=
 kws = list(dict.fromkeys(list(picked) + [w.strip().lower() for w in free.split(",") if w.strip()]))
 st.session_state.kws_picked = list(picked)
 c1, c2, c3 = st.columns([2, 2, 1], vertical_alignment="bottom")
-win = c1.segmented_control("פורסם ב-", list(WINDOWS), format_func=lambda h: WINDOWS[h], default=48, key="win") or 0
+win = c1.segmented_control("לחפש משרות שפורסמו ב-", list(WINDOWS), format_func=lambda h: WINDOWS[h], default=48, key="win") or 0
 sort = c2.segmented_control("מיון", ["fit", "new"], format_func=lambda s: "התאמה" if s == "fit" else "הכי חדש", default="fit", key="sort") or "fit"
 only_new = c3.toggle("רק חדשות", key="only_new", help="רק משרות שנמצאו בחיפוש האחרון")
 
@@ -626,8 +627,10 @@ def body():
             st.session_state.pop("hist", None)
             st.rerun()
     else:
-        mine = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue and any(k in j.get("kws", []) for k in view_kws)]
-        shown = [j for j in mine if not win or age_h(j) <= win + (0 if j.get("dayOnly") else 1)]
+        # Assaf 18 Nov: every job not yet marked sent/removed stays on screen after a new login, for every keyword and any age;
+        # the keyword pills and the time window only steer the next search
+        mine = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
+        shown = list(mine)
     # "new" = found by the latest search batch (Assaf 18 Nov): its earliest finished keyword marks the start
     runs_ = s.get("runs", [])
     last_b = max(runs_, key=lambda r: r["at"]).get("batch") if runs_ else None
@@ -653,22 +656,17 @@ def body():
             elif hist:
                 st.info("כל המשרות מהחיפוש הזה כבר בארכיון או בתור.")
             elif only_new:
-                st.info("אין משרות חדשות מהחיפוש האחרון במילים ובחלון שבחרת. כבה \"רק חדשות\" כדי לראות את כל המשרות הפתוחות.")
+                st.info("אין משרות חדשות מהחיפוש האחרון. כבה \"רק חדשות\" כדי לראות את כל המשרות הפתוחות.")
             else:
-                hidden = len(mine)
                 ran = any(r["kw"] in view_kws for r in s.get("runs", []))
                 lastauto = sum((next((r for r in s.get("runs", []) if r["kw"] == k), {}).get("autoRemoved") or 0) for k in view_kws)
-                if hidden:
-                    st.info(f"אין משרות מה-{WINDOWS[win]} האחרונות. {hidden} ישנות יותר מוסתרות.")
-                elif lastauto:
+                if lastauto:
                     st.info(f"הריצה האחרונה מצאה {lastauto} משרות חדשות, אבל כולן קיבלו ציון מתחת ל-{MIN_FIT} והוסרו אוטומטית, לכן אין מה להציג. "
                             f"לחץ \"היסטוריה\" ליד המילה כדי לראות אותן ולהחזיר.")
                 else:
-                    st.info("אין משרות פתוחות למילים שבחרת." if ran else "עוד לא חיפשת את המילים האלה. החיפוש ירוץ רק כשתלחץ \"חפש\".")
+                    st.info("אין משרות פתוחות. כל מה שנמצא כבר סומן כנשלח או הוסר." if ran else "אין משרות פתוחות. החיפוש ירוץ רק כשתלחץ \"חפש\".")
         for j in shown:
             card(j, new=is_new(j))
-        if not hist and shown and len(mine) > len(shown):
-            st.caption(f"{len(mine) - len(shown)} משרות ישנות יותר מ-{WINDOWS[win]} מוסתרות")
     with tq:
         if not qjobs:
             st.info("התור ריק. לחץ \"לשליחה ←\" על משרה בתוצאות, ואז הפעל את סוכן השליחה במחשב שלך.")
