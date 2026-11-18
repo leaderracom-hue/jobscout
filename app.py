@@ -387,6 +387,17 @@ def mark(key, status):
     update_state(m, f"{status}: {key}")
 
 
+def mark_many(keys, status):
+    """Assaf 18 Nov: remove several jobs at once (one save to the data repo)."""
+    def m(s):
+        now = dt.datetime.now(dt.timezone.utc).isoformat()
+        for key in keys:
+            j = s["jobs"].get(key, {})
+            s["archive"][key] = {"status": status, "at": now, "title": j.get("title"), "company": j.get("company"),
+                                 "urls": list((j.get("links") or {"x": j.get("url")}).values())}
+    update_state(m, f"{status} x{len(keys)}")
+
+
 QSTATUS = {"queued": ("ממתין לסוכן", "#5b6474"), "ready": ("מולא · ממתין שתלחץ שלח", "#2a55c9"),
            "needs_you": ("צריך אותך", "#9a5b00"), "unsupported": ("אתר שעוד לא נתמך", "#9a5b00"),
            "skipped": ("נסגר בלי שליחה", "#5b6474"), "failed": ("נכשל", "#b3322f")}
@@ -409,6 +420,8 @@ def card(j, arc=False, queued=None, new=False):
     with st.container(border=True):
         c1, c2, c3 = st.columns([1, 7, 3], vertical_alignment="top")
         c1.markdown(f'<div class="fit {cls}">{fit if fit is not None else "—"}<small>התאמה</small></div>', unsafe_allow_html=True)
+        if not arc and not queued:
+            c1.checkbox("בחר", key=f"sel-{j['key']}", help="סמן כדי להסיר כמה משרות ביחד")
         tags = '<span class="tag" style="color:#fff;background:#2a55c9;border-color:#2a55c9">חדשה</span>' if new else ""
         tags += "".join(f'<span class="tag" style="color:#7a3fb0;border-color:#c9a8e8">{LABEL.get(k, k)}</span>' for k in j.get("kws", []))  # search keyword(s) that found it
         tags += "".join(f'<span class="tag">{BOARD.get(b, b)}</span>' for b in j.get("boards", []))
@@ -638,6 +651,14 @@ def body():
     is_new = lambda j: (j.get("foundAt") or "") >= new_since
     if only_new:
         shown = [j for j in shown if is_new(j)]
+    AGE = {"all": "הכל", "1": "יום", "3": "3 ימים", "7": "שבוע", "older": "מעל שבוע"}
+    age = st.segmented_control("הצג משרות שפורסמו ב-", list(AGE), format_func=lambda a: AGE[a], default="all", key="age_view") or "all"
+    if not hist and age != "all":
+        lim = lambda j: (0 if j.get("dayOnly") else 1)  # day-only dates get no extra hour
+        if age == "older":
+            shown = [j for j in shown if age_h(j) > 7 * 24 + lim(j)]
+        else:
+            shown = [j for j in shown if age_h(j) <= int(age) * 24 + lim(j)]
     shown.sort(key=(lambda j: (-(j.get("fit") if j.get("fit") is not None else -1), age_h(j))) if sort == "fit" else age_h)
     qjobs = sorted(({**s["jobs"].get(k, {"title": "?"}), "key": k, "_q": q} for k, q in queue.items() if k not in s["archive"]),
                    key=lambda j: j["_q"].get("at", ""), reverse=True)
@@ -655,8 +676,8 @@ def body():
                 st.info("החיפוש רץ. משרות חדשות יופיעו כאן ברגע שכל מילה מסתיימת.")
             elif hist:
                 st.info("כל המשרות מהחיפוש הזה כבר בארכיון או בתור.")
-            elif only_new:
-                st.info("אין משרות חדשות מהחיפוש האחרון. כבה \"רק חדשות\" כדי לראות את כל המשרות הפתוחות.")
+            elif mine and (only_new or age != "all"):
+                st.info("אין משרות שמתאימות לסינון. בחר \"הכל\" או כבה \"רק חדשות\" כדי לראות את כל המשרות הפתוחות.")
             else:
                 ran = any(r["kw"] in view_kws for r in s.get("runs", []))
                 lastauto = sum((next((r for r in s.get("runs", []) if r["kw"] == k), {}).get("autoRemoved") or 0) for k in view_kws)
@@ -665,6 +686,30 @@ def body():
                             f"לחץ \"היסטוריה\" ליד המילה כדי לראות אותן ולהחזיר.")
                 else:
                     st.info("אין משרות פתוחות. כל מה שנמצא כבר סומן כנשלח או הוסר." if ran else "אין משרות פתוחות. החיפוש ירוץ רק כשתלחץ \"חפש\".")
+        if shown:
+            sel = [j["key"] for j in shown if st.session_state.get(f"sel-{j['key']}")]
+            b1, b2, b3 = st.columns([2, 2, 3], vertical_alignment="center")
+            if b1.button(f"הסר מסומנות ({len(sel)})", key="rm_sel", disabled=not sel, use_container_width=True):
+                mark_many(sel, "removed")
+                for k in sel:
+                    st.session_state.pop(f"sel-{k}", None)
+                st.rerun()
+            if st.session_state.get("rm_all_ask"):
+                b3.warning(f"להסיר את כל {len(shown)} המשרות שמוצגות עכשיו?")
+                y, n = b3.columns(2)
+                if y.button("כן, הסר הכל", key="rm_all_yes", type="primary", use_container_width=True):
+                    keys = [j["key"] for j in shown]
+                    mark_many(keys, "removed")
+                    for k in keys:
+                        st.session_state.pop(f"sel-{k}", None)
+                    st.session_state.pop("rm_all_ask", None)
+                    st.rerun()
+                if n.button("ביטול", key="rm_all_no", use_container_width=True):
+                    st.session_state.pop("rm_all_ask", None)
+                    st.rerun()
+            elif b2.button(f"הסר הכל ({len(shown)})", key="rm_all", use_container_width=True, help="מסיר את כל המשרות שמוצגות עכשיו, לפי הסינון שבחרת"):
+                st.session_state.rm_all_ask = True
+                st.rerun()
         for j in shown:
             card(j, new=is_new(j))
     with tq:
