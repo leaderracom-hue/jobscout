@@ -57,7 +57,7 @@ st.markdown("""<style>
 .fit{width:54px;height:54px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;
      font-family:ui-monospace,monospace;font-weight:700;font-size:1.25rem;line-height:1}
 .fit small{font-size:.58rem;font-weight:500;margin-top:3px;font-family:sans-serif}
-.f-hi{background:#e3f3ea;color:#16794a}.f-mid{background:#fbf0dc;color:#9a5b00}.f-lo{background:#fbe7e6;color:#b3322f}.f-na{background:#eef0f3;color:#5b6474}
+.f-hi{background:#e3f3ea;color:#16794a}.f-mid{background:#fbf0dc;color:#9a5b00}.f-lo{background:#e6effc;color:#1d4fa8}.f-na{background:#eef0f3;color:#5b6474}
 .jt{font-weight:600;font-size:1.05rem;line-height:1.35}.jt a{color:inherit;text-decoration:none}.jt a:hover{color:#2a55c9}
 .sub{color:#6b7280;font-size:.86rem;margin-top:1px}
 .tags{margin-top:4px}
@@ -103,7 +103,7 @@ def gate():
                 st.session_state.ok = True
                 st.rerun()
             time.sleep(1.5)  # slows down guessing
-            st.error("סיסמה שגויה")
+            st.info("סיסמה שגויה", icon="⚠️")
     st.stop()
 
 
@@ -233,7 +233,8 @@ GTM_RX = re.compile(r"\bgtm\b", re.I)
 
 
 def is_gtm(j):
-    """Assaf 19 Nov: any job with GTM in the title or the post text always stays: never hidden by exclude words, never auto-removed for a low score."""
+    """Assaf 19 Nov: a job with GTM in the title or the post text skips the title filters and the exclude words.
+    The score rule still wins: under 45 is never shown (Assaf, later the same day)."""
     return bool(j.get("gtm") or GTM_RX.search(str(j.get("title") or "")) or GTM_RX.search(str(j.get("desc") or "")))
 
 
@@ -379,7 +380,7 @@ def search_core(kw, hours, batch, report):
                 st_["jobs"][k]["desc"] = str(j["desc"])[:3000]
             if is_gtm(j):
                 st_["jobs"][k]["gtm"] = True
-            if fit is not None and fit < MIN_FIT and not is_gtm(j):  # never shown, never returns (GTM jobs always stay)
+            if fit is not None and fit < MIN_FIT:  # Assaf 19 Nov rule of thumb: under 45 is never shown, whatever else (GTM included)
                 st_["archive"][k] = {"status": "auto", "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
                                      "urls": list((j.get("links") or {"x": j.get("url")}).values())}
         for k, j, why in blocked:
@@ -387,7 +388,7 @@ def search_core(kw, hours, batch, report):
                               "kws": [kw], "foundAt": now, "posted": j.get("posted")}
             st_["archive"][k] = {"status": "auto", "reason": "excluded", "note": why, "at": now, "title": j["title"], "company": j.get("company"),
                                  "urls": list((j.get("links") or {"x": j.get("url")}).values())}
-        auto = len(blocked) + sum(1 for k, j in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT and not is_gtm(j)))
+        auto = len(blocked) + sum(1 for k, j in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
         autoc["n"] = auto
         runs =[{"kw": kw, "hours": hours or None, "at": now, "batch": batch, "found": len(found), "new": len(fresh), "autoRemoved": auto,
                  "stats": stats, "keys": keys, "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:499]
@@ -659,7 +660,7 @@ def ask_panel(j):
                 try:
                     hist.append((asked, ask_claude(j, asked, hist)))
                 except Exception as e:
-                    st.error(f"השאלה נכשלה: {str(e)[:200]}")
+                    st.info(f"השאלה נכשלה: {str(e)[:200]}", icon="⚠️")
                     return
             st.rerun()
 
@@ -677,7 +678,7 @@ def card(j, new=False):
     cv = j.get("cv") or ""
     tags = '<span class="tag t-new">חדשה</span>' if new else ""
     if is_gtm(j):
-        tags += '<span class="tag t-ok">GTM · תמיד נשאר</span>'
+        tags += '<span class="tag t-ok">GTM</span>'
     ck = company_key(j.get("company"))
     if ck and ck in CTX["followed"]:
         tags += '<span class="tag t-star">⭐ במעקב</span>'
@@ -790,7 +791,7 @@ def inbox_body():
     queue = s.get("queue", {})
     opn = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
     hidden = [j for j in opn if excluded(s, j)]  # the user's exclude words / blocked companies
-    opn = [j for j in opn if not excluded(s, j)]
+    opn = [j for j in opn if not excluded(s, j) and not (j.get("fit") is not None and j["fit"] < MIN_FIT)]  # under 45: never shown
     cfg = settings_of(s)
     CTX["followed"] = set(cfg["followed_companies"])
     CTX["sent_by_co"] = {}
@@ -1321,7 +1322,7 @@ def ask_data_panel():
                 try:
                     hist.append((asked, ask_data(asked, hist)))
                 except Exception as e:
-                    st.error(f"השאלה נכשלה: {str(e)[:200]}")
+                    st.info(f"השאלה נכשלה: {str(e)[:200]}", icon="⚠️")
                     return
             st.rerun()
 
@@ -1416,7 +1417,7 @@ def research_block(s):
             try:
                 text = run_research(s)
             except Exception as e:
-                st.error(f"הדוח נכשל: {str(e)[:200]}")
+                st.info(f"הדוח נכשל: {str(e)[:200]}", icon="⚠️")
                 return
         update_state(lambda st_: st_.__setitem__("research", {"at": dt.datetime.now(dt.timezone.utc).isoformat(), "text": text}), "research report")
         st.rerun()

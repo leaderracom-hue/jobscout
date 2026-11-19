@@ -1,0 +1,3 @@
+[theme]
+# Assaf 19 Nov: no red in the dashboard - blue shades instead (buttons, pills, toggles, progress bars, tabs)
+primaryColor = "#2a55c9"
