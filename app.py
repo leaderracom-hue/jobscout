@@ -47,7 +47,7 @@ BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", 
 
 st.set_page_config(page_title="Job Scout", page_icon=":material/work:", layout="wide")
 st.markdown("""<style>
-.block-container{max-width:1150px;padding-top:1.6rem}
+.block-container{max-width:1150px;padding-top:3.8rem}
 .stMainBlockContainer, .stMarkdown, .stCaption, [data-testid="stExpander"], [data-testid="stSidebarContent"]{direction:rtl;text-align:right}
 [data-testid="stMetric"]{background:#f6f8fb;border:1px solid #e6eaf0;border-radius:12px;padding:10px 14px}
 [data-testid="stMetricValue"]{font-size:1.6rem}
@@ -65,6 +65,9 @@ st.markdown("""<style>
 .t-ok{color:#16794a;border-color:#bfe3cd}.t-cv{color:#2a55c9;border-color:#c9d6f5;background:#f3f6fd;font-family:ui-monospace,monospace}
 details.why{margin-top:5px;font-size:.88rem;color:#374151}details.why summary{cursor:pointer;color:#2a55c9;font-size:.8rem;list-style:none}
 details.why summary::before{content:"▸ "}details.why[open] summary::before{content:"▾ "}
+.t-star{color:#9a5b00;border-color:#f0d9a8;background:#fff8e8}
+.warn{display:inline-block;margin-top:4px;font-size:.8rem;color:#9a5b00;background:#fff8e8;border:1px solid #f0d9a8;border-radius:6px;padding:1px 8px}
+.ai-h{font-weight:600;color:#7a3fb0}.ai-a{background:#faf6fe;border:1px solid #e6d6f5;border-radius:10px;padding:8px 12px;margin:4px 0 10px;white-space:pre-wrap}
 </style>""", unsafe_allow_html=True)
 
 
@@ -203,6 +206,40 @@ def key_of(j):
     return norm(j.get("company"))[:10] + "|" + norm(j.get("title"))[:24]
 
 
+def settings_of(s):
+    """Assaf 19 Nov: user rules kept in state.json → exclude words (title), blocked + followed companies."""
+    st_ = s.setdefault("settings", {})
+    for k in ("exclude_words", "blocked_companies", "followed_companies"):
+        st_.setdefault(k, [])
+    return st_
+
+
+def company_key(name):
+    n = norm(name)
+    return "" if not n or "חסוי" in str(name or "") or n in ("confidential",) else n[:24]
+
+
+def _word_hit(word, text):
+    w = str(word or "").strip()
+    if not w:
+        return False
+    if re.fullmatch(r"[\x00-\x7f]+", w):  # Latin: whole word only ("staff" must not hit "staffing")
+        return re.search(r"(?<![a-z0-9])" + re.escape(w.lower()) + r"(?![a-z0-9])", str(text or "").lower()) is not None
+    return w in str(text or "")
+
+
+def excluded(s, j):
+    """Why a job is filtered out by the user's own rules, or None."""
+    cfg = settings_of(s)
+    ck = company_key(j.get("company"))
+    if ck and ck in cfg["blocked_companies"]:
+        return f"חברה חסומה: {j.get('company')}"
+    for w in cfg["exclude_words"]:
+        if _word_hit(w, j.get("title")):
+            return f"מילה לסינון: {w}"
+    return None
+
+
 def lang_of(j):
     s = f"{j.get('title', '')} {str(j.get('desc', ''))[:800]}"
     he, lat = len(re.findall(r"[֐-׿]", s)), len(re.findall(r"[A-Za-z]", s))
@@ -294,6 +331,8 @@ def search_core(kw, hours, batch, report):
         k = key_of(j)
         keys.append(k)
         (seen_again.__setitem__(k, j) if k in s["jobs"] else fresh.append((k, j)))
+    blocked = [(k, j, excluded(s, j)) for k, j in fresh if excluded(s, j)]  # user's exclude words / blocked companies: no scoring cost
+    fresh = [(k, j) for k, j in fresh if not excluded(s, j)]
     report("scoring", found=len(found), new=len(fresh))
     scores, usd = {}, 0.0
     with ThreadPoolExecutor(8) as ex:
@@ -325,13 +364,20 @@ def search_core(kw, hours, batch, report):
                               "posted": j.get("posted"), "dayOnly": bool(j.get("dayOnly")), "url": j.get("url"), "links": j.get("links"),
                               "boards": j.get("boards", []), "easyApply": bool(j.get("easyApply")), "kws": [kw], "foundAt": now, **scores.get(k, {})}
             fit = scores.get(k, {}).get("fit")
+            if (fit is None or fit >= MIN_FIT) and j.get("desc"):  # kept while the job is open, for "Ask Claude"
+                st_["jobs"][k]["desc"] = str(j["desc"])[:3000]
             if fit is not None and fit < MIN_FIT:  # never shown, never returns
                 st_["archive"][k] = {"status": "auto", "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
                                      "urls": list((j.get("links") or {"x": j.get("url")}).values())}
-        auto = sum(1 for k, _ in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
+        for k, j, why in blocked:
+            st_["jobs"][k] = {"key": k, "title": j["title"], "company": j.get("company"), "url": j.get("url"), "boards": j.get("boards", []),
+                              "kws": [kw], "foundAt": now, "posted": j.get("posted")}
+            st_["archive"][k] = {"status": "auto", "reason": "excluded", "note": why, "at": now, "title": j["title"], "company": j.get("company"),
+                                 "urls": list((j.get("links") or {"x": j.get("url")}).values())}
+        auto = len(blocked) + sum(1 for k, _ in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
         autoc["n"] = auto
         runs =[{"kw": kw, "hours": hours or None, "at": now, "batch": batch, "found": len(found), "new": len(fresh), "autoRemoved": auto,
-                 "stats": stats, "keys": keys, "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:199]
+                 "stats": stats, "keys": keys, "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:499]
         for r in runs:  # history keeps the job list for 72 hours only
             if r.get("keys") and r["at"] < cutoff:
                 r.pop("keys")
@@ -417,6 +463,7 @@ def mark_many(keys, status):
         now = dt.datetime.now(dt.timezone.utc).isoformat()
         for key in keys:
             j = s["jobs"].get(key, {})
+            j.pop("desc", None)
             s["archive"][key] = {"status": status, "at": now, "title": j.get("title"), "company": j.get("company"),
                                  "urls": list((j.get("links") or {"x": j.get("url")}).values())}
     update_state(m, f"{status}: {keys[0]}" if len(keys) == 1 else f"{status} x{len(keys)}")
@@ -521,6 +568,67 @@ def new_since(s):
     return min((r["at"] for r in runs_ if last_b and r.get("batch") == last_b), default="9999")
 
 
+ASK_PRESETS = ["מה הדרישות העיקריות במשרה?", "איך להתאים את קורות החיים למשרה הזאת?",
+               "כתוב מכתב פנייה קצר (עד 100 מילים) למשרה", "אילו שאלות כדאי לי להכין לראיון?"]
+
+
+def ask_claude(j, question, prior):
+    """Assaf 19 Nov: free-form question about one job. Opus 5.5 at low effort (~$0.02–0.04 a question)."""
+    import anthropic
+    client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"))
+    post = "\n".join([f"TITLE: {j.get('title')}", f"COMPANY: {j.get('company') or 'not stated'}", f"LOCATION: {j.get('location') or 'Israel'}",
+                      f"POSTED: {ago(j)}", f"LINK: {j.get('url')}", f"FIT SCORE: {j.get('fit')}", f"WHY IT FITS (earlier review): {j.get('why') or ''}",
+                      f"GAPS: {', '.join(map(str, j.get('gaps') or []))}", "", "JOB DESCRIPTION:",
+                      j.get("desc") or "(not saved for this job - answer from the title, company and the review above, and say the full post was not available)"])
+    system = (BRAIN + "\n\n---\nYou now answer Assaf's questions about ONE job post (below). Answer in simple, natural Hebrew, "
+              "speaking to him in male second person; keep tool and product names in English. Be concrete and short (max ~150 words) unless he "
+              "asks for a letter or a list. Never invent facts about the company or the post; say when something is not in the post. "
+              "Never state how many years of experience he has.\n\nJOB POST:\n" + post)
+    msgs = []
+    for q, a in prior[-4:]:
+        msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+    msgs.append({"role": "user", "content": question})
+    r = client.beta.messages.create(model="claude-opus-5-5", max_tokens=16000, system=system, messages=msgs,
+                                    output_config={"effort": "low"}, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    if r.stop_reason == "refusal":
+        return "Claude לא ענה על השאלה הזאת. נסה לנסח אותה אחרת."
+    return "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip() or "(אין תשובה)"
+
+
+def ask_panel(j):
+    k = j["key"]
+    hist = st.session_state.setdefault("ask_hist", {}).setdefault(k, [])
+    with st.container(border=True):
+        st.markdown("<span class='ai-h'>✨ שאל את Claude על המשרה הזאת</span>"
+                    + ("" if j.get("desc") else "<br><span class='sub'>תיאור המשרה לא נשמר עבור משרה זו, Claude יענה לפי הכותרת וההערכה</span>"),
+                    unsafe_allow_html=True)
+        for q, a in hist:
+            st.markdown(f"**שאלת:** {q}")
+            with st.container(border=True):
+                st.markdown(a)
+        cols = st.columns(len(ASK_PRESETS))
+        asked = None
+        for i, q in enumerate(ASK_PRESETS):
+            if cols[i].button(q, key=f"askp-{k}-{i}", width="stretch"):
+                asked = q
+        with st.form(f"askf-{k}", clear_on_submit=True, border=False):
+            a1, a2 = st.columns([5, 1], vertical_alignment="bottom")
+            free = a1.text_input("שאלה משלך", placeholder="שאלה משלך…", label_visibility="collapsed")
+            if a2.form_submit_button("שאל", type="primary", width="stretch") and free.strip():
+                asked = free.strip()
+        if asked:
+            with st.spinner("Claude חושב…"):
+                try:
+                    hist.append((asked, ask_claude(j, asked, hist)))
+                except Exception as e:
+                    st.error(f"השאלה נכשלה: {str(e)[:200]}")
+                    return
+            st.rerun()
+
+
+CTX = {"sent_by_co": {}, "followed": set()}
+
+
 def fit_cls(fit):
     return "f-na" if fit is None else "f-hi" if fit >= 80 else "f-mid" if fit >= 60 else "f-lo"
 
@@ -530,6 +638,9 @@ def card(j, new=False):
     fit = j.get("fit")
     cv = j.get("cv") or ""
     tags = '<span class="tag t-new">חדשה</span>' if new else ""
+    ck = company_key(j.get("company"))
+    if ck and ck in CTX["followed"]:
+        tags += '<span class="tag t-star">⭐ במעקב</span>'
     tags += "".join(f'<span class="tag t-kw">{lbl(x)}</span>' for x in j.get("kws", []))
     tags += "".join(f'<span class="tag">{BOARD.get(b, b)}</span>' for b in j.get("boards", []))
     if j.get("easyApply"):
@@ -546,10 +657,11 @@ def card(j, new=False):
         c2.markdown(
             f'<div class="jt"><a href="{j.get("url")}" target="_blank">{j.get("title")}</a></div>'
             f'<div class="sub">{j.get("company") or "—"} · {j.get("location") or "ישראל"} · {ago(j)}</div>'
-            f'<div class="tags">{tags}</div>'
+            + (f'<div class="warn">⚠️ כבר שלחת לחברה הזאת {CTX["sent_by_co"][ck]} פעמים</div>' if ck and CTX["sent_by_co"].get(ck) else "")
+            + f'<div class="tags">{tags}</div>'
             + (f'<details class="why"><summary>למה זה מתאים</summary>{why}{more}</details>' if why else ""),
             unsafe_allow_html=True)
-        a1, a2, a3, a4 = c2.columns([2, 1.3, 1.3, 1.3])
+        a1, a2, a3, a4, a5 = c2.columns([2, 1.2, 1.3, 1.2, 1.6])
         a1.link_button("פתח והגש ↗", j.get("url") or "#", type="primary", width="stretch")
         if cv and st.session_state.get("cv_open") == k:
             try:
@@ -565,6 +677,12 @@ def card(j, new=False):
         if a4.button("✕ הסר", key=f"x-{k}", width="stretch"):
             mark_many([k], "removed")
             st.rerun()
+        open_ask = st.session_state.get("ask_open") == k
+        if a5.button("✨ שאל את Claude" if not open_ask else "סגור את Claude", key=f"ask-{k}", width="stretch"):
+            st.session_state.ask_open = None if open_ask else k
+            st.rerun()
+    if st.session_state.get("ask_open") == k:
+        ask_panel(j)
 
 
 def job_table(rows, key, height=None):
@@ -601,6 +719,16 @@ def inbox_body():
     undo_bar()
     queue = s.get("queue", {})
     opn = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
+    hidden = [j for j in opn if excluded(s, j)]  # the user's exclude words / blocked companies
+    opn = [j for j in opn if not excluded(s, j)]
+    cfg = settings_of(s)
+    CTX["followed"] = set(cfg["followed_companies"])
+    CTX["sent_by_co"] = {}
+    for k, a in s["archive"].items():
+        if a.get("status") == "sent":
+            ck = company_key(a.get("company") or (s["jobs"].get(k) or {}).get("company"))
+            if ck:
+                CTX["sent_by_co"][ck] = CTX["sent_by_co"].get(ck, 0) + 1
     ns = new_since(s)
     is_new = lambda j: (j.get("foundAt") or "") >= ns
     hist = st.session_state.get("hist")
@@ -627,9 +755,10 @@ def inbox_body():
         src_opts = sorted({x for j in opn for x in j.get("boards", [])})
         f_src = f3.multiselect("מקור", src_opts, format_func=lambda x: BOARD.get(x, x), placeholder="כל המקורות", key="f_src", label_visibility="collapsed")
         f_min = f4.selectbox("ציון", [0, 60, 70, 80], format_func=lambda v: "כל הציונים" if not v else f"ציון {v}+", key="f_min", label_visibility="collapsed")
-        g1, g2, g3, g4 = st.columns([3.2, 1.3, 1.8, 2])
+        g1, g2, g5, g3, g4 = st.columns([3.2, 1.3, 1.4, 1.8, 2])
         age = g1.segmented_control("פורסם", list(AGE), format_func=lambda a: AGE[a], default="all", key="age_view", label_visibility="collapsed") or "all"
         only_new = g2.toggle("רק חדשות", key="only_new")
+        only_star = g5.toggle("⭐ במעקב", key="only_star", help="רק חברות שסימנת למעקב בעמוד \"חברות\"")
         sort = g3.selectbox("מיון", ["fit", "new", "company"], format_func={"fit": "מיון: התאמה", "new": "מיון: הכי חדש", "company": "מיון: חברה"}.get,
                             key="sort", label_visibility="collapsed")
         view = g4.segmented_control("תצוגה", ["cards", "table"], format_func={"cards": "▦ כרטיסים", "table": "☰ טבלה"}.get, default="cards",
@@ -647,6 +776,10 @@ def inbox_body():
         shown = [j for j in shown if (j.get("fit") or 0) >= f_min]
     if only_new:
         shown = [j for j in shown if is_new(j)]
+    if only_star:
+        shown = [j for j in shown if company_key(j.get("company")) in CTX["followed"]]
+    if hidden:
+        st.caption(f"🚫 {len(hidden)} משרות פתוחות מוסתרות לפי המילים והחברות שבעמוד \"סינון\"")
     if age != "all":
         lim = lambda j: 0 if j.get("dayOnly") else 1
         shown = [j for j in shown if ((age_h(j) > 7 * 24 + lim(j)) if age == "older" else (age_h(j) <= int(age) * 24 + lim(j)))]
@@ -676,7 +809,7 @@ def inbox_body():
     p1, p2, p3, p4 = st.columns([1.6, 3, 1, 1], vertical_alignment="center")
     size = p1.segmented_control("בעמוד", [10, 25, 50], default=25, key="page_size", label_visibility="collapsed") or 25
     pages = max(1, -(-n_all // size))
-    sig = (q, tuple(f_kw), tuple(f_src), f_min, age, only_new, sort, size, bool(hist))
+    sig = (q, tuple(f_kw), tuple(f_src), f_min, age, only_new, only_star, sort, size, bool(hist))
     if st.session_state.get("page_sig") != sig:
         st.session_state.page_sig, st.session_state.page = sig, 1
     page = min(max(1, st.session_state.get("page", 1)), pages)
@@ -766,7 +899,8 @@ def page_search():
     left = cap - used - pending
     with st.container(border=True):
         w1, w2 = st.columns([3, 2], vertical_alignment="bottom")
-        win = w1.segmented_control("משרות שפורסמו ב-", list(WINDOWS), format_func=lambda h: WINDOWS[h], default=48, key="win") or 0
+        st.session_state.setdefault("win", 48)
+        win = w1.segmented_control("משרות שפורסמו ב-", list(WINDOWS), format_func=lambda h: WINDOWS[h], key="win") or 0
         mins = -(-len(kws) // 3) * 3
         w2.markdown(f"**{len(kws)} מילים** · כ-${len(kws) * USD_PER_KW:.2f} · כ-{mins} דק'  \n"
                     f"<span class='sub'>היום {used + pending}/{cap} חיפושים · נשארו {max(0, left)}</span>", unsafe_allow_html=True)
@@ -782,28 +916,47 @@ def page_search():
 
 
 def page_history():
+    """Assaf 19 Nov: every search ever kept (last 500 keyword runs), not only 72 hours; 'search again' refills the search page."""
     s, _ = load_state()
-    st.markdown("##### חיפושים אחרונים")
-    st.caption(f"{HISTORY_HOURS} השעות האחרונות. \"פתח\" מציג בתיבה רק את המשרות של החיפוש הזה, בלי עלות.")
-    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=HISTORY_HOURS)).isoformat()
     groups = {}
     for r in s.get("runs", []):
-        if r.get("keys") and r["at"] >= cutoff:
-            groups.setdefault(r.get("batch") or r["at"], []).append(r)
+        groups.setdefault(r.get("batch") or r["at"], []).append(r)
+    st.markdown("##### היסטוריית חיפושים")
+    st.caption("כל החיפושים שנשמרו. \"פתח\" מציג בתיבה רק את המשרות של החיפוש (זמין 72 שעות). \"↻ חפש שוב\" ממלא את עמוד החיפוש באותן מילים.")
     if not groups:
-        st.info("אין חיפושים מ-72 השעות האחרונות.")
+        st.info("עוד לא היו חיפושים.")
+    q = st.text_input("סינון", placeholder="🔎 מילת חיפוש…", key="hist_q", label_visibility="collapsed")
+    shown_n = 0
     for g, runs in sorted(groups.items(), key=lambda x: max(r["at"] for r in x[1]), reverse=True):
-        keys = list(dict.fromkeys(k for r in runs for k in r["keys"]))
+        kws_g = list(dict.fromkeys(r["kw"] for r in runs))
+        if q.strip() and not any(q.strip().lower() in lbl(k).lower() for k in kws_g):
+            continue
+        shown_n += 1
+        if shown_n > 40:
+            st.caption("מוצגים 40 החיפושים האחרונים. צמצם בעזרת הסינון כדי לראות ישנים יותר.")
+            break
+        keys = list(dict.fromkeys(k for r in runs for k in (r.get("keys") or [])))
         open_n = sum(1 for k in keys if k not in s["archive"])
+        good = sum(1 for k in keys if ((s["jobs"].get(k) or {}).get("fit") or 0) >= MIN_FIT)
+        hours = runs[0].get("hours") or 0
         at = to_il(min(r["at"] for r in runs)).strftime("%d.%m %H:%M")
-        label = f"{at} · {len(runs)} מילים · {WINDOWS.get(runs[0].get('hours') or 0, 'שבוע')}"
+        usd = sum((r.get("claudeUsd") or 0) for r in runs) + len(runs) * 0.16  # Apify per keyword, measured 18 Nov
+        label = f"{at} · {len(runs)} מילים · {WINDOWS.get(hours, 'שבוע')}"
         with st.container(border=True):
-            a, c = st.columns([5, 1], vertical_alignment="center")
-            a.markdown(f"**{label}** · {sum(r.get('new', 0) for r in runs)} חדשות · {open_n} עדיין פתוחות  \n"
+            a, b_, c = st.columns([5, 1, 1.2], vertical_alignment="center")
+            a.markdown(f"**{label}** · {sum(r.get('new', 0) for r in runs)} חדשות"
+                       + (f" · {good} עם ציון {MIN_FIT}+ · {open_n} עדיין פתוחות" if keys else "")
+                       + f" · כ-${usd:.2f}  \n"
                        + " ".join(f"<span class='tag t-kw'>{lbl(r['kw'])} · {r.get('new', 0)}</span>" for r in runs), unsafe_allow_html=True)
-            if c.button("פתח", key=f"h-{g}", width="stretch", disabled=not open_n):
+            if b_.button("פתח", key=f"h-{g}", width="stretch", disabled=not open_n,
+                         help=None if keys else "רשימת המשרות של חיפוש נשמרת 72 שעות"):
                 st.session_state.hist = {"keys": keys, "label": label}
                 st.switch_page(PAGES["inbox"])
+            if c.button("↻ חפש שוב", key=f"again-{g}", width="stretch"):
+                _preset(kws_g)
+                st.session_state.kw_free = ", ".join(k for k in kws_g if k not in KEYWORDS)
+                st.session_state.win = hours if hours in WINDOWS else 0
+                st.switch_page(PAGES["search"])
 
     st.markdown("##### לפי מילה")
     have = [k for k in KEYWORDS if any(r["kw"] == k for r in s.get("runs", []))] + \
@@ -821,6 +974,124 @@ def page_history():
     jobs = [{**j, "_status": ST.get((s["archive"].get(j["key"]) or {}).get("status"), "פתוח")} for j in s["jobs"].values() if kw in j.get("kws", [])]
     st.caption(f"{len(jobs)} משרות נמצאו במילה הזאת")
     job_table(sorted(jobs, key=lambda j: -(j.get("fit") or 0)), key=f"kwjobs_{kw}")
+
+
+def save_settings(change, message):
+    def m(s):
+        change(settings_of(s))
+    update_state(m, message)
+
+
+def page_filters():
+    """Assaf 19 Nov: words that hide a job (title) + blocked companies. Applied in the inbox now and to every future search (no scoring cost)."""
+    s, _ = load_state()
+    cfg = settings_of(s)
+    opn = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in s.get("queue", {})]
+    st.markdown("##### מילים לסינון")
+    st.caption("משרה שהכותרת שלה מכילה אחת מהמילים לא תופיע בתיבה, ובחיפושים הבאים תוסר אוטומטית בלי לשלם על דירוג. "
+               "מילים באנגלית נבדקות כמילה שלמה (staff לא יתפוס staffing).")
+    with st.form("add_word", clear_on_submit=True, border=True):
+        a, b = st.columns([5, 1], vertical_alignment="bottom")
+        new = a.text_input("הוסף מילים (מופרדות בפסיק)", placeholder="למשל: Principal, Staff, מועדון לקוחות, נציג")
+        if b.form_submit_button("הוסף", type="primary", width="stretch") and new.strip():
+            words = [w.strip() for w in new.split(",") if w.strip()]
+            save_settings(lambda c: c.__setitem__("exclude_words", list(dict.fromkeys(c["exclude_words"] + words))), f"exclude +{len(words)}")
+            st.rerun()
+    if cfg["exclude_words"]:
+        hits = {w: sum(1 for j in opn if _word_hit(w, j.get("title"))) for w in cfg["exclude_words"]}
+        drop = st.pills("לחץ על מילה כדי לסמן אותה להסרה", cfg["exclude_words"], selection_mode="multi", key="drop_words",
+                        format_func=lambda w: f"{w} · {hits[w]}")
+        if st.button(f"✕ הסר מהרשימה ({len(drop or [])})", disabled=not drop, key="rm_words"):
+            save_settings(lambda c: c.__setitem__("exclude_words", [w for w in c["exclude_words"] if w not in drop]), "exclude -words")
+            st.rerun()
+    else:
+        st.info("אין עדיין מילים לסינון.")
+
+    st.markdown("##### חברות חסומות")
+    blocked = cfg["blocked_companies"]
+    names = {}
+    for j in s["jobs"].values():
+        ck = company_key(j.get("company"))
+        if ck:
+            names.setdefault(ck, j.get("company"))
+    if blocked:
+        drop_c = st.pills("לחץ על חברה כדי לבטל חסימה", blocked, selection_mode="multi", key="drop_cos", format_func=lambda c: names.get(c, c))
+        if st.button(f"בטל חסימה ({len(drop_c or [])})", disabled=not drop_c, key="unblock"):
+            save_settings(lambda c: c.__setitem__("blocked_companies", [x for x in c["blocked_companies"] if x not in drop_c]), "unblock companies")
+            st.rerun()
+    else:
+        st.info("אין חברות חסומות. אפשר לחסום חברה בעמוד \"חברות\".")
+
+    hid = [j for j in opn if excluded(s, j)]
+    st.markdown("##### מוסתרות עכשיו")
+    if not hid:
+        st.caption("אין משרות פתוחות שמוסתרות כרגע.")
+        return
+    st.caption(f"{len(hid)} משרות פתוחות מוסתרות מהתיבה. אפשר להעביר אותן לארכיון כדי לנקות.")
+    job_table(hid, key="hidden_tbl", height=min(38 + 35 * len(hid), 360))
+    if st.button(f"העבר את כל {len(hid)} לארכיון (הוסרו)", key="hide_to_arc"):
+        mark_many([j["key"] for j in hid], "removed")
+        st.rerun()
+
+
+def page_companies():
+    """Assaf 19 Nov: every company seen, with jobs / open / sent; follow (⭐ filter in the inbox) or block (hidden + skipped in searches)."""
+    s, _ = load_state()
+    cfg = settings_of(s)
+    cos = {}
+    for k, j in s["jobs"].items():
+        ck = company_key(j.get("company"))
+        if not ck:
+            continue
+        c = cos.setdefault(ck, {"key": ck, "name": j.get("company"), "jobs": 0, "open": 0, "sent": 0, "removed": 0, "last_sent": "", "best": 0})
+        c["jobs"] += 1
+        a = s["archive"].get(k)
+        if not a:
+            c["open"] += 1
+        elif a.get("status") == "sent":
+            c["sent"] += 1
+            c["last_sent"] = max(c["last_sent"], a.get("at", ""))
+        elif a.get("status") == "removed":
+            c["removed"] += 1
+        c["best"] = max(c["best"], j.get("fit") or 0)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("חברות", len(cos))
+    m2.metric("עם משרות פתוחות", sum(1 for c in cos.values() if c["open"]))
+    m3.metric("שלחת אליהן", sum(1 for c in cos.values() if c["sent"]))
+    m4.metric("במעקב · חסומות", f"{len(cfg['followed_companies'])} · {len(cfg['blocked_companies'])}")
+    f1, f2 = st.columns([3, 2], vertical_alignment="center")
+    q = f1.text_input("חיפוש", placeholder="🔎 שם חברה…", key="co_q", label_visibility="collapsed")
+    show = f2.segmented_control("הצג", ["all", "open", "sent", "star", "blocked"], default="all", key="co_show", label_visibility="collapsed",
+                                format_func={"all": "הכל", "open": "עם פתוחות", "sent": "שלחתי", "star": "⭐ במעקב", "blocked": "🚫 חסומות"}.get) or "all"
+    rows = sorted(cos.values(), key=lambda c: (-c["open"], -c["sent"], -c["jobs"]))
+    if q.strip():
+        rows = [c for c in rows if q.strip().lower() in str(c["name"]).lower()]
+    rows = {"all": rows, "open": [c for c in rows if c["open"]], "sent": [c for c in rows if c["sent"]],
+            "star": [c for c in rows if c["key"] in cfg["followed_companies"]],
+            "blocked": [c for c in rows if c["key"] in cfg["blocked_companies"]]}[show]
+    if not rows:
+        st.info("אין חברות להצגה.")
+        return
+    df = pd.DataFrame([{"": ("⭐" if c["key"] in cfg["followed_companies"] else "") + ("🚫" if c["key"] in cfg["blocked_companies"] else ""),
+                        "חברה": c["name"], "משרות": c["jobs"], "פתוחות": c["open"], "שלחת": c["sent"], "הסרת": c["removed"],
+                        "ציון הכי גבוה": c["best"], "הגשה אחרונה": to_il(c["last_sent"]).strftime("%d.%m") if c["last_sent"] else ""} for c in rows])
+    ev = st.dataframe(df, hide_index=True, width="stretch", on_select="rerun", selection_mode="multi-row", key="co_tbl",
+                      height=min(38 + 35 * len(rows), 560),
+                      column_config={"ציון הכי גבוה": st.column_config.ProgressColumn("ציון הכי גבוה", min_value=0, max_value=100, format="%d")})
+    sel = [rows[i]["key"] for i in (ev.selection.rows if ev and ev.selection else [])]
+    b1, b2, b3, b4 = st.columns(4)
+    if b1.button(f"⭐ עקוב ({len(sel)})", disabled=not sel, width="stretch", type="primary"):
+        save_settings(lambda c: c.__setitem__("followed_companies", list(dict.fromkeys(c["followed_companies"] + sel))), f"follow x{len(sel)}")
+        st.rerun()
+    if b2.button(f"בטל מעקב ({len(sel)})", disabled=not sel, width="stretch"):
+        save_settings(lambda c: c.__setitem__("followed_companies", [x for x in c["followed_companies"] if x not in sel]), f"unfollow x{len(sel)}")
+        st.rerun()
+    if b3.button(f"🚫 חסום ({len(sel)})", disabled=not sel, width="stretch", help="המשרות שלהן יוסתרו, ובחיפושים הבאים יוסרו אוטומטית"):
+        save_settings(lambda c: c.__setitem__("blocked_companies", list(dict.fromkeys(c["blocked_companies"] + sel))), f"block x{len(sel)}")
+        st.rerun()
+    if b4.button(f"בטל חסימה ({len(sel)})", disabled=not sel, width="stretch"):
+        save_settings(lambda c: c.__setitem__("blocked_companies", [x for x in c["blocked_companies"] if x not in sel]), f"unblock x{len(sel)}")
+        st.rerun()
 
 
 def page_archive():
@@ -899,7 +1170,9 @@ state, _ = load_state()
 PAGES = {
     "inbox": st.Page(page_inbox, title="משרות", icon=":material/inbox:", url_path="inbox", default=True),
     "search": st.Page(page_search, title="חיפוש חדש", icon=":material/search:", url_path="search"),
-    "history": st.Page(page_history, title="היסטוריה", icon=":material/history:", url_path="history"),
+    "history": st.Page(page_history, title="היסטוריית חיפושים", icon=":material/history:", url_path="history"),
+    "companies": st.Page(page_companies, title="חברות", icon=":material/apartment:", url_path="companies"),
+    "filters": st.Page(page_filters, title="סינון", icon=":material/block:", url_path="filters"),
     "archive": st.Page(page_archive, title="ארכיון", icon=":material/inventory_2:", url_path="archive"),
     "stats": st.Page(page_stats, title="סטטיסטיקה", icon=":material/insights:", url_path="stats"),
 }
