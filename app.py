@@ -1257,7 +1257,8 @@ def data_context(s):
     for k, j in sorted(s["jobs"].items(), key=lambda x: x[1].get("foundAt") or ""):
         a = arc.get(k) or {}
         lines.append("|".join(str(x or "").replace("|", "/").replace("\n", " ") for x in [
-            k[:20], str(j.get("title"))[:80], str(j.get("company"))[:40], j.get("fit"), a.get("status") or "open", ",".join(j.get("kws", [])),
+            k[:20], str(j.get("title"))[:80], str(j.get("company"))[:40], j.get("fit"),
+            (a.get("status") or "open") + (f":{a['reason']}" if a.get("reason") else ""), ",".join(j.get("kws", [])),
             ",".join(j.get("boards", [])), str(j.get("posted") or "")[:10], str(j.get("foundAt") or "")[:10], str(a.get("at") or "")[:10],
             j.get("lang"), j.get("verdict")]))
     runs = ["date|keyword|window_h|found|new|auto_removed_under_45"] + [
@@ -1265,7 +1266,8 @@ def data_context(s):
     cfg = settings_of(s)
     return "\n".join([
         f"TODAY (Israel): {dt.datetime.now(IL).date()}", f"SCORE THRESHOLD: jobs scored under {MIN_FIT} are archived automatically (status auto).",
-        "STATUS VALUES: open = still in his inbox, sent = he applied, removed = he dismissed it, auto = low score or his exclude rules.",
+        "STATUS VALUES: open = still in his inbox, sent = he applied, removed = he dismissed it, auto = score under the threshold; "
+        "auto:cyber = cyber/security employer (his rule: never cyber, whatever the score); auto:excluded = his exclude words or blocked companies.",
         f"EXCLUDE WORDS: {cfg['exclude_words']}", f"BLOCKED COMPANIES: {cfg['blocked_companies']}", f"FOLLOWED COMPANIES: {cfg['followed_companies']}",
         "", "PER KEYWORD:", pd.DataFrame(kw_rows).to_csv(index=False), "PER SOURCE:", pd.DataFrame(src_rows).to_csv(index=False),
         "", f"SEARCH RUNS ({len(runs) - 1}):", "\n".join(runs), "", f"ALL JOBS ({len(lines) - 1}):", "\n".join(lines)])
@@ -1324,6 +1326,135 @@ def ask_data_panel():
             st.rerun()
 
 
+def compute_insights(s):
+    """Assaf 19 Nov: plain-number conclusions for the Stats page (no AI, no cost)."""
+    arc, jobs = s["archive"], s["jobs"]
+    status = lambda j: (arc.get(j["key"]) or {}).get("status") or "open"
+    scored = [j for j in jobs.values() if j.get("fit") is not None]
+    g45 = [j for j in scored if j["fit"] >= MIN_FIT]
+    sent = [j for j in jobs.values() if status(j) == "sent"]
+    removed = [j for j in jobs.values() if status(j) == "removed"]
+    today = dt.datetime.now(IL).date()
+    sent_dates = [to_il(a["at"]).date() for a in arc.values() if a.get("status") == "sent" and a.get("at")]
+    last7 = sum(1 for d in sent_dates if d > today - dt.timedelta(days=7))
+    active_days = len({d for d in sent_dates if d > today - dt.timedelta(days=7)}) or 1
+    goal = int(secret("DAILY_GOAL", 50))
+    runs = s.get("runs", [])
+    usd = sum((r.get("claudeUsd") or 0) for r in runs) + 0.16 * len(runs)
+    kw_rows, src_rows = stats_tables(s)
+    strong = sorted([r for r in kw_rows if r["נשלחו"] >= 3], key=lambda r: (-r["% 45+"], -r["נשלחו"]))[:3]
+    weak = sorted([r for r in kw_rows if r["משרות"] >= 8 and r["% 45+"] < 35], key=lambda r: r["% 45+"])[:3]
+    dead = [r["מילה"] for r in kw_rows if r["חיפושים"] >= 1 and r["ציון 45+"] == 0]
+    best_src = max(src_rows, key=lambda r: r["% מסך הנשלחות"]) if src_rows else None
+    eff_src = max([r for r in src_rows if r["ציון 45+"] >= 5] or src_rows or [{}], key=lambda r: r.get("% 45+", 0)) if src_rows else None
+    bands = []
+    for lo, hi in [(45, 55), (55, 65), (65, 75), (75, 101)]:
+        b = [j for j in scored if lo <= j["fit"] < hi and status(j) in ("sent", "removed")]
+        bands.append((f"{lo}–{min(hi, 100) - (0 if hi > 100 else 1)}", len(b), _pct(sum(1 for j in b if status(j) == "sent"), len(b))))
+    eng = re.compile(r"\b(engineer|developer|software|scientist)\b", re.I)
+    low = [j for j in scored if j["fit"] < MIN_FIT]
+    eng_low = sum(1 for j in low if eng.search(str(j.get("title"))) and not is_gtm(j))
+    return {"scored": len(scored), "g45": len(g45), "sent": len(sent), "removed": len(removed), "found": len(jobs), "low": len(low),
+            "eng_low": eng_low, "last7": last7, "per_day": round(last7 / active_days, 1), "active_days": active_days, "goal": goal,
+            "usd": usd, "usd_per_sent": usd / max(1, len(sent)), "strong": strong, "weak": weak, "dead": dead,
+            "best_src": best_src, "eff_src": eff_src, "bands": bands}
+
+
+def insights_block(s):
+    i = compute_insights(s)
+    st.markdown("##### 💡 תובנות ומסקנות")
+    st.caption("מחושב אוטומטית מהנתונים שלך, בלי עלות. מתעדכן בכל כניסה.")
+    f1, f2, f3, f4, f5 = st.columns(5)
+    f1.metric("נמצאו", i["found"])
+    f2.metric("דורגו", i["scored"])
+    f3.metric(f"ציון {MIN_FIT}+", i["g45"], f"{_pct(i['g45'], i['scored'])}% מהמדורגות", delta_color="off")
+    f4.metric("נשלחו", i["sent"], f"{_pct(i['sent'], i['g45'])}% מהטובות", delta_color="off")
+    f5.metric("עלות להגשה", f"${i['usd_per_sent']:.2f}", f"${i['usd']:.0f} בסך הכל", delta_color="off")
+    c1, c2 = st.columns(2)
+    with c1.container(border=True):
+        st.markdown("**🎯 קצב מול היעד**")
+        gap = i["goal"] - i["per_day"]
+        st.markdown(f"ב-7 הימים האחרונים שלחת **{i['last7']}** הגשות ב-{i['active_days']} ימי עבודה: **{i['per_day']} ביום** מול יעד של {i['goal']}. "
+                    + (f"חסרות כ-**{gap:.0f} הגשות ביום**. כדי לסגור את הפער צריך כ-{(gap / max(0.01, _pct(i['sent'], i['g45']) / 100)):.0f} משרות טובות נוספות ביום, "
+                       f"כי אתה שולח ל-{_pct(i['sent'], i['g45'])}% מהמשרות הטובות." if gap > 0 else "אתה עומד ביעד. 👏"))
+    with c2.container(border=True):
+        st.markdown("**📉 למה רוב המשרות לא מתאימות**")
+        st.markdown(f"**{_pct(i['low'], i['scored'])}%** מהמשרות קיבלו ציון מתחת ל-{MIN_FIT}. "
+                    f"**{i['eng_low']}** מהן הן תפקידי פיתוח או הנדסה, שכבר מסוננים בעמוד \"סינון\". "
+                    "שאר הסיבות שחוזרות בהסברים: דרישת שנות ניסיון ובכירות, ותחום מקצועי שאינו שלך.")
+    c3, c4 = st.columns(2)
+    with c3.container(border=True):
+        st.markdown("**✅ מילות החיפוש הכי משתלמות**")
+        st.markdown("\n".join(f"- **{r['מילה']}**: {r['% 45+']}% מהמשרות עם ציון טוב, {r['נשלחו']} הגשות" for r in i["strong"]) or "אין מספיק נתונים עדיין.")
+        if i["weak"]:
+            st.markdown("**⚠️ חלשות:** " + " · ".join(f"{r['מילה']} ({r['% 45+']}% טובות)" for r in i["weak"]))
+        if i["dead"]:
+            st.markdown("**❌ לא הביאו אף משרה טובה:** " + ", ".join(i["dead"]))
+    with c4.container(border=True):
+        st.markdown("**📡 מקורות**")
+        if i["best_src"]:
+            st.markdown(f"- הכי הרבה הגשות: **{i['best_src']['מקור']}** ({i['best_src']['% מסך הנשלחות']}% מכל ההגשות)")
+        if i["eff_src"]:
+            st.markdown(f"- הכי מדויק: **{i['eff_src'].get('מקור')}** ({i['eff_src'].get('% 45+')}% מהמשרות שלו עם ציון טוב)")
+        st.markdown("**🎚️ אחוז הגשה לפי ציון** (מתוך משרות שסימנת)")
+        st.markdown(" · ".join(f"{b}: **{p}%** ({n})" for b, n, p in i["bands"]))
+        top = i["bands"][-1][2]
+        low_b = i["bands"][0][2]
+        if top and low_b < top / 2:
+            st.caption(f"אתה שולח הרבה יותר למשרות 75+ ({top}%) מאשר ל-45–54 ({low_b}%). העלאת הסף ל-55 תוריד רעש בלי לאבד הרבה הגשות.")
+
+
+def research_block(s):
+    """Claude research report (Opus 5.5), saved in state.json so it stays until refreshed. ~$0.10–0.20 a report."""
+    rep = s.get("research") or {}
+    st.markdown("##### 🔬 מחקר מעמיק")
+    a, b = st.columns([5, 1.4], vertical_alignment="center")
+    a.caption((("עודכן " + to_il(rep["at"]).strftime("%d.%m %H:%M") + " · ") if rep.get("at") else "")
+              + "Claude קורא את כל המשרות, הציונים, החיפושים והסטטוסים וכותב ניתוח, מסקנות והמלצות. כ-$0.10–0.20 לדוח.")
+    if b.button("🔬 צור דוח חדש" if rep else "🔬 צור דוח", key="make_research", type="primary", width="stretch"):
+        with st.spinner("Claude כותב את הדוח… (כדקה)"):
+            try:
+                text = run_research(s)
+            except Exception as e:
+                st.error(f"הדוח נכשל: {str(e)[:200]}")
+                return
+        update_state(lambda st_: st_.__setitem__("research", {"at": dt.datetime.now(dt.timezone.utc).isoformat(), "text": text}), "research report")
+        st.rerun()
+    if rep.get("text"):
+        with st.container(border=True):
+            st.markdown(rep["text"])
+    else:
+        st.info("עוד אין דוח. לחץ \"צור דוח\".")
+
+
+def run_research(s):
+    import anthropic
+    client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"))
+    i = compute_insights(s)
+    prompt = (
+        "Write a research report for Assaf about his job search, from the data. Structure (Hebrew headings, markdown):\n"
+        "## תמונת מצב (3-4 bullets with the key numbers)\n## מה עובד (keywords, sources, job types that lead to applications - with numbers)\n"
+        "## מה לא עובד ולמה (low-score patterns, wasted keywords/sources, recurring gaps)\n"
+        "## דפוסים בהגשות שלך (what he sends vs removes: titles, companies, score bands, Hebrew vs English posts)\n"
+        "## המלצות (5-7 concrete actions, each with the expected effect and the number behind it: keywords to add/drop, exclude words, sources, threshold, daily routine to reach the goal)\n"
+        "## שאלות פתוחות (2-3 things the data cannot answer yet)\n"
+        f"Daily goal: {i['goal']} applications. Be specific, use the real numbers, no generic advice, max ~600 words.")
+    system = [{"type": "text", "text": (
+        "You are the analyst inside Job Scout, Assaf's job-search dashboard (Israel only; he applies manually). Use only the data below; "
+        "compute exactly and say when the data cannot answer. Simple, natural Hebrew, male second person; keep keyword, tool, company and source "
+        "names as in the data. Jobs with GTM in the title or post always stay in his inbox by his rule.\n\nDATA:\n" + data_context(s)),
+        "cache_control": {"type": "ephemeral"}}]
+    with client.beta.messages.stream(model="claude-opus-5-5", max_tokens=64000, system=system, messages=[{"role": "user", "content": prompt}],
+                                     output_config={"effort": "high"}, betas=["server-side-fallback-2026-07-01"], fallbacks="default") as stream:
+        r = stream.get_final_message()
+    if r.stop_reason == "refusal":
+        raise RuntimeError("Claude declined to write the report")
+    text = "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip()
+    if not text:
+        raise RuntimeError(f"empty report (stop_reason={r.stop_reason}, blocks={[getattr(b, 'type', '?') for b in r.content]})")
+    return text
+
+
 def page_stats():
     s, _ = load_state()
     arc, jobs = s["archive"], s["jobs"]
@@ -1347,6 +1478,9 @@ def page_stats():
     usd, cap_usd = apify_usage()
     m5.metric("Apify החודש", f"${usd:.2f}" if usd is not None else "?", f"{_pct(usd or 0, cap_usd or 0)}% מתוך ${cap_usd:.0f}" if cap_usd else None, delta_color="off")
 
+    insights_block(s)
+    research_block(s)
+    st.markdown("##### ✨ שאל את הנתונים")
     ask_data_panel()
 
     st.markdown("##### הגשות ביום (14 ימים)")
