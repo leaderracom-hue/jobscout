@@ -1175,6 +1175,125 @@ def page_archive():
                 st.rerun()
 
 
+def _pct(a, b):
+    return round(100 * a / b) if b else 0
+
+
+def stats_tables(s):
+    """Per keyword / per source tables with counts and percentages (Assaf 19 Nov). Also feeds 'Ask the data'."""
+    arc, jobs = s["archive"], s["jobs"]
+    status = lambda j: (arc.get(j["key"]) or {}).get("status") or "open"
+    kw_rows = []
+    for k in list(dict.fromkeys(KEYWORDS + [r["kw"] for r in s.get("runs", [])])):
+        runs = [r for r in s.get("runs", []) if r["kw"] == k]
+        js = [j for j in jobs.values() if k in j.get("kws", [])]
+        if not runs and not js:
+            continue
+        scored = [j for j in js if j.get("fit") is not None]
+        g45 = sum(1 for j in scored if j["fit"] >= 45)
+        sent = sum(1 for j in js if status(j) == "sent")
+        kw_rows.append({"מילה": lbl(k), "חיפושים": len(runs), "משרות": len(js), "ציון 45+": g45, "% 45+": _pct(g45, len(scored)),
+                        "ציון 70+": sum(1 for j in scored if j["fit"] >= 70), "% 70+": _pct(sum(1 for j in scored if j["fit"] >= 70), len(scored)),
+                        "נשלחו": sent, "% נשלחו מ-45+": _pct(sent, g45), "הוסרו": sum(1 for j in js if status(j) == "removed"),
+                        "% מסך הנשלחות": 0})
+    total_sent = sum(1 for a in arc.values() if a.get("status") == "sent") or 1
+    for r in kw_rows:
+        r["% מסך הנשלחות"] = _pct(r["נשלחו"], total_sent)
+    src = {}
+    for j in jobs.values():
+        for b in j.get("boards", []):
+            o = src.setdefault(b, {"מקור": BOARD.get(b, b), "משרות": 0, "_scored": 0, "ציון 45+": 0, "נשלחו": 0})
+            o["משרות"] += 1
+            o["_scored"] += j.get("fit") is not None
+            o["ציון 45+"] += (j.get("fit") or 0) >= 45
+            o["נשלחו"] += status(j) == "sent"
+    src_rows = []
+    for o in sorted(src.values(), key=lambda o: -o["נשלחו"]):
+        src_rows.append({"מקור": o["מקור"], "משרות": o["משרות"], "ציון 45+": o["ציון 45+"], "% 45+": _pct(o["ציון 45+"], o["_scored"]),
+                         "נשלחו": o["נשלחו"], "% נשלחו מ-45+": _pct(o["נשלחו"], o["ציון 45+"]), "% מסך הנשלחות": _pct(o["נשלחו"], total_sent)})
+    return kw_rows, src_rows
+
+
+PCT = lambda name: st.column_config.ProgressColumn(name, min_value=0, max_value=100, format="%d%%")
+DATA_PRESETS = ["אילו מילות חיפוש הכי משתלמות לי, ואילו כדאי להוריד?", "מאילו מקורות הגיעו המשרות ששלחתי?",
+                "כמה שלחתי השבוע לעומת השבוע שעבר?", "לאילו חברות כדאי לי לעקוב, לפי מה ששלחתי והציונים?"]
+
+
+def data_context(s):
+    """Compact text snapshot of the whole dataset for 'Ask the data' (cached by Claude between questions)."""
+    kw_rows, src_rows = stats_tables(s)
+    arc = s["archive"]
+    lines = ["key|title|company|fit|status|keywords|sources|posted|found|archived_at|lang|verdict"]
+    for k, j in sorted(s["jobs"].items(), key=lambda x: x[1].get("foundAt") or ""):
+        a = arc.get(k) or {}
+        lines.append("|".join(str(x or "").replace("|", "/").replace("\n", " ") for x in [
+            k[:20], str(j.get("title"))[:80], str(j.get("company"))[:40], j.get("fit"), a.get("status") or "open", ",".join(j.get("kws", [])),
+            ",".join(j.get("boards", [])), str(j.get("posted") or "")[:10], str(j.get("foundAt") or "")[:10], str(a.get("at") or "")[:10],
+            j.get("lang"), j.get("verdict")]))
+    runs = ["date|keyword|window_h|found|new|auto_removed_under_45"] + [
+        f"{str(r['at'])[:16]}|{r['kw']}|{r.get('hours') or 168}|{r.get('found', 0)}|{r.get('new', 0)}|{r.get('autoRemoved', 0)}" for r in s.get("runs", [])]
+    cfg = settings_of(s)
+    return "\n".join([
+        f"TODAY (Israel): {dt.datetime.now(IL).date()}", f"SCORE THRESHOLD: jobs scored under {MIN_FIT} are archived automatically (status auto).",
+        "STATUS VALUES: open = still in his inbox, sent = he applied, removed = he dismissed it, auto = low score or his exclude rules.",
+        f"EXCLUDE WORDS: {cfg['exclude_words']}", f"BLOCKED COMPANIES: {cfg['blocked_companies']}", f"FOLLOWED COMPANIES: {cfg['followed_companies']}",
+        "", "PER KEYWORD:", pd.DataFrame(kw_rows).to_csv(index=False), "PER SOURCE:", pd.DataFrame(src_rows).to_csv(index=False),
+        "", f"SEARCH RUNS ({len(runs) - 1}):", "\n".join(runs), "", f"ALL JOBS ({len(lines) - 1}):", "\n".join(lines)])
+
+
+def ask_data(question, prior):
+    import anthropic
+    s, _ = load_state()
+    client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"))
+    system = [{"type": "text", "text": (
+        "You are the analyst inside Job Scout, Assaf's job-search dashboard (Israel only; he applies manually; target 50-70 applications a day). "
+        "Answer his questions from the data below only - count and compute exactly, show the numbers you used, and say when the data cannot answer. "
+        "Answer in simple, natural Hebrew, male second person, short (max ~180 words), using a small markdown table when it helps. "
+        "Keep keyword, tool, company and source names as written in the data.\n\nDATA:\n" + data_context(s)),
+        "cache_control": {"type": "ephemeral"}}]
+    msgs = []
+    for q, a in prior[-4:]:
+        msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+    msgs.append({"role": "user", "content": question})
+    r = client.beta.messages.create(model="claude-opus-5-5", max_tokens=16000, system=system, messages=msgs,
+                                    output_config={"effort": "medium"}, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    if r.stop_reason == "refusal":
+        return "Claude לא ענה על השאלה הזאת. נסה לנסח אותה אחרת."
+    return "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip() or "(אין תשובה)"
+
+
+def ask_data_panel():
+    hist = st.session_state.setdefault("ask_data_hist", [])
+    with st.container(border=True):
+        st.markdown("<span class='ai-h'>✨ שאל את הנתונים</span> <span class='sub'>Claude עונה מכל המשרות, החיפושים והסטטוסים · כ-$0.05–0.10 לשאלה</span>",
+                    unsafe_allow_html=True)
+        for q, a in hist:
+            st.markdown(f"**שאלת:** {q}")
+            with st.container(border=True):
+                st.markdown(a)
+        cols = st.columns(len(DATA_PRESETS))
+        asked = None
+        for i, q in enumerate(DATA_PRESETS):
+            if cols[i].button(q, key=f"adp-{i}", width="stretch"):
+                asked = q
+        with st.form("ask_data_form", clear_on_submit=True, border=False):
+            a1, a2 = st.columns([5, 1], vertical_alignment="bottom")
+            free = a1.text_input("שאלה", placeholder="למשל: כמה משרות עם ציון 70+ הגיעו מ-AllJobs השבוע?", label_visibility="collapsed")
+            if a2.form_submit_button("שאל", type="primary", width="stretch") and free.strip():
+                asked = free.strip()
+        if hist and st.button("נקה שיחה", key="ad_clear"):
+            st.session_state.ask_data_hist = []
+            st.rerun()
+        if asked:
+            with st.spinner("Claude מנתח את הנתונים…"):
+                try:
+                    hist.append((asked, ask_data(asked, hist)))
+                except Exception as e:
+                    st.error(f"השאלה נכשלה: {str(e)[:200]}")
+                    return
+            st.rerun()
+
+
 def page_stats():
     s, _ = load_state()
     arc, jobs = s["archive"], s["jobs"]
@@ -1187,38 +1306,29 @@ def page_stats():
             if d in per_day:
                 per_day[d] += 1
     goal = int(secret("DAILY_GOAL", 50))
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("נשלחו היום", per_day[today], f"יעד {goal}")
+    scored = [j for j in jobs.values() if j.get("fit") is not None]
+    g45 = sum(1 for j in scored if j["fit"] >= 45)
+    sent_all = sum(1 for a in arc.values() if a.get("status") == "sent")
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("נשלחו היום", per_day[today], f"{_pct(per_day[today], goal)}% מהיעד ({goal})", delta_color="off")
     m2.metric("נשלחו ב-7 ימים", sum(v for d, v in per_day.items() if d > today - dt.timedelta(days=7)))
-    m3.metric("נשלחו בסך הכל", sum(1 for a in arc.values() if a.get("status") == "sent"))
+    m3.metric("ציון 45+ מכל המשרות", f"{_pct(g45, len(scored))}%", f"{g45} מתוך {len(scored)}", delta_color="off")
+    m4.metric("נשלחו מתוך 45+", f"{_pct(sent_all, g45)}%", f"{sent_all} נשלחו", delta_color="off")
     usd, cap_usd = apify_usage()
-    m4.metric("Apify החודש", f"${usd:.2f}" if usd is not None else "?", f"מתוך ${cap_usd:.0f}" if cap_usd else None, delta_color="off")
+    m5.metric("Apify החודש", f"${usd:.2f}" if usd is not None else "?", f"{_pct(usd or 0, cap_usd or 0)}% מתוך ${cap_usd:.0f}" if cap_usd else None, delta_color="off")
+
+    ask_data_panel()
+
     st.markdown("##### הגשות ביום (14 ימים)")
     st.bar_chart(pd.DataFrame({"נשלחו": list(per_day.values())}, index=[d.strftime("%d.%m") for d in days]), height=220)
-
+    kw_rows, src_rows = stats_tables(s)
     st.markdown("##### לפי מילה")
-    rows = []
-    for k in list(dict.fromkeys(KEYWORDS + [r["kw"] for r in s.get("runs", [])])):
-        runs = [r for r in s.get("runs", []) if r["kw"] == k]
-        js = [j for j in jobs.values() if k in j.get("kws", [])]
-        if not runs and not js:
-            continue
-        rows.append({"מילה": lbl(k), "חיפושים": len(runs), "משרות": len(js), "ציון 45+": sum(1 for j in js if (j.get("fit") or 0) >= 45),
-                     "ציון 70+": sum(1 for j in js if (j.get("fit") or 0) >= 70),
-                     "נשלחו": sum(1 for j in js if (arc.get(j["key"]) or {}).get("status") == "sent"),
-                     "הוסרו": sum(1 for j in js if (arc.get(j["key"]) or {}).get("status") == "removed")})
-    st.dataframe(pd.DataFrame(rows).sort_values("נשלחו", ascending=False), hide_index=True, width="stretch",
-                 column_config={"נשלחו": st.column_config.ProgressColumn("נשלחו", min_value=0, max_value=max([r["נשלחו"] for r in rows] + [1]), format="%d")})
-
+    st.caption("% 45+ = מתוך המשרות שקיבלו ציון · % נשלחו מ-45+ = כמה מהמשרות הטובות שלחת בפועל · % מסך הנשלחות = החלק של המילה מכל ההגשות")
+    st.dataframe(pd.DataFrame(kw_rows).sort_values("נשלחו", ascending=False), hide_index=True, width="stretch",
+                 column_config={"% 45+": PCT("% 45+"), "% 70+": PCT("% 70+"), "% נשלחו מ-45+": PCT("% נשלחו מ-45+"), "% מסך הנשלחות": PCT("% מסך הנשלחות")})
     st.markdown("##### לפי מקור")
-    src = {}
-    for j in jobs.values():
-        for b in j.get("boards", []):
-            o = src.setdefault(b, {"מקור": BOARD.get(b, b), "משרות": 0, "ציון 45+": 0, "נשלחו": 0})
-            o["משרות"] += 1
-            o["ציון 45+"] += (j.get("fit") or 0) >= 45
-            o["נשלחו"] += (arc.get(j["key"]) or {}).get("status") == "sent"
-    st.dataframe(pd.DataFrame(sorted(src.values(), key=lambda o: -o["נשלחו"])), hide_index=True, width="stretch")
+    st.dataframe(pd.DataFrame(src_rows), hide_index=True, width="stretch",
+                 column_config={"% 45+": PCT("% 45+"), "% נשלחו מ-45+": PCT("% נשלחו מ-45+"), "% מסך הנשלחות": PCT("% מסך הנשלחות")})
     st.caption("עלות משוערת: כ-$0.25 לכל מילת חיפוש (Apify כ-$0.16 + Claude כ-$0.09).")
 
 
