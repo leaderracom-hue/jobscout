@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import requests
 import streamlit as st
 
@@ -46,16 +47,24 @@ BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", 
 
 st.set_page_config(page_title="Job Scout", page_icon=":material/work:", layout="wide")
 st.markdown("""<style>
-.block-container{max-width:1050px;padding-top:2rem}
-.stMainBlockContainer, .stMarkdown, .stCaption, [data-testid="stExpander"]{direction:rtl;text-align:right}
-.fit{width:58px;height:58px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-     font-family:ui-monospace,monospace;font-weight:600;font-size:1.3rem;line-height:1}
-.fit small{font-size:.6rem;font-weight:500;margin-top:3px;font-family:sans-serif}
+.block-container{max-width:1150px;padding-top:1.6rem}
+.stMainBlockContainer, .stMarkdown, .stCaption, [data-testid="stExpander"], [data-testid="stSidebarContent"]{direction:rtl;text-align:right}
+[data-testid="stMetric"]{background:#f6f8fb;border:1px solid #e6eaf0;border-radius:12px;padding:10px 14px}
+[data-testid="stMetricValue"]{font-size:1.6rem}
+.brand{font-weight:700;font-size:1.35rem;margin:-6px 0 10px}.brand small{display:block;font-weight:400;font-size:.78rem;color:#6b7280}
+.side-kpi{display:flex;justify-content:space-between;padding:5px 2px;border-bottom:1px solid #eef0f3;font-size:.88rem}.side-kpi b{font-weight:600}
+.fit{width:54px;height:54px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+     font-family:ui-monospace,monospace;font-weight:700;font-size:1.25rem;line-height:1}
+.fit small{font-size:.58rem;font-weight:500;margin-top:3px;font-family:sans-serif}
 .f-hi{background:#e3f3ea;color:#16794a}.f-mid{background:#fbf0dc;color:#9a5b00}.f-lo{background:#fbe7e6;color:#b3322f}.f-na{background:#eef0f3;color:#5b6474}
-.jt{font-weight:600;font-size:1.05rem}.jt a{color:inherit;text-decoration:none}
-.sub{color:#6b7280;font-size:.88rem}
-.tag{display:inline-block;font-size:.72rem;border:1px solid #dde1e8;border-radius:999px;padding:0 9px;margin:2px 0 0 4px;color:#5b6474}
-.cv{display:inline-block;font-size:.78rem;background:#e7edfb;color:#2a55c9;border-radius:6px;padding:2px 8px;font-family:ui-monospace,monospace;margin-left:4px}
+.jt{font-weight:600;font-size:1.05rem;line-height:1.35}.jt a{color:inherit;text-decoration:none}.jt a:hover{color:#2a55c9}
+.sub{color:#6b7280;font-size:.86rem;margin-top:1px}
+.tags{margin-top:4px}
+.tag{display:inline-block;font-size:.72rem;border:1px solid #dde1e8;border-radius:999px;padding:0 9px;margin:2px 0 0 4px;color:#5b6474;background:#fff}
+.t-new{background:#2a55c9;border-color:#2a55c9;color:#fff}.t-kw{color:#7a3fb0;border-color:#d9c3f0;background:#faf6fe}
+.t-ok{color:#16794a;border-color:#bfe3cd}.t-cv{color:#2a55c9;border-color:#c9d6f5;background:#f3f6fd;font-family:ui-monospace,monospace}
+details.why{margin-top:5px;font-size:.88rem;color:#374151}details.why summary{cursor:pointer;color:#2a55c9;font-size:.8rem;list-style:none}
+details.why summary::before{content:"▸ "}details.why[open] summary::before{content:"▾ "}
 </style>""", unsafe_allow_html=True)
 
 
@@ -356,7 +365,31 @@ def start_batch(kws, hours):
     return batch
 
 
-# ---------------- screen ----------------
+# ---------------- screen (Assaf 19 Nov: app layout — sidebar navigation, inbox / search / history / archive / stats) ----------------
+GROUPS = {
+    "מוצר": ["מנהל מוצר", "product ai", "ai product owner", "technical product manager", "data product manager", "product operations", "product marketing"],
+    "אוטומציה ושיווק": ["מנהל מוצר אוטומציות", "marketing automation", "אוטומציות שיווק", "מנהל פרויקט אוטומציות", "automation", "lifecycle marketing", "מנהל מערכות שיווק"],
+    "AI": ["ai builder", "ai automation", "מיישם פתרונות ai", "ai implementation", "ai solutions", "ai trainer"],
+    "CRM": ["crm product", "crm integration", "crm automation"],
+    "GTM ועוד": ["gtm product", "gtm ai", "gtm engineer", "טרנספורמציה דיגיטלית", "מנהל חדשנות", "freelancer"],
+}
+TOP10 = ["מנהל מוצר אוטומציות", "marketing automation", "ai builder", "אוטומציות שיווק", "gtm product", "product ai", "מנהל מוצר",
+         "gtm engineer", "product marketing", "ai automation"]
+NEW12 = ["מיישם פתרונות ai", "ai implementation", "ai solutions", "ai product owner", "technical product manager", "data product manager",
+         "product operations", "crm product", "lifecycle marketing", "טרנספורמציה דיגיטלית", "מנהל חדשנות", "מנהל מערכות שיווק"]
+USD_PER_KW = 0.25  # measured 18 Nov: Apify ~$0.16 + Claude ~$0.09 per keyword
+AGE = {"all": "הכל", "1": "יום", "3": "3 ימים", "7": "שבוע", "older": "מעל שבוע"}
+PHASE = {"queued": "ממתין", "pulling": "מושך משרות", "scoring": "מדרג", "done": "הסתיים", "error": "נכשל"}
+
+
+def lbl(k):
+    return LABEL.get(k, k)
+
+
+def to_il(iso):
+    return dt.datetime.fromisoformat(str(iso).replace("Z", "+00:00")).astimezone(IL)
+
+
 def ago(j):
     p = j.get("posted")
     if not p:
@@ -376,395 +409,518 @@ def age_h(j):
     return (dt.datetime.now(dt.timezone.utc) - t).total_seconds() / 3600
 
 
-def mark(key, status):
-    def m(s):
-        j = s["jobs"].get(key, {})
-        if status == "restore":
-            s["archive"].pop(key, None)
-        else:
-            s["archive"][key] = {"status": status, "at": dt.datetime.now(dt.timezone.utc).isoformat(), "title": j.get("title"),
-                                 "company": j.get("company"), "urls": list((j.get("links") or {"x": j.get("url")}).values())}
-    update_state(m, f"{status}: {key}")
-
-
 def mark_many(keys, status):
-    """Assaf 18 Nov: remove several jobs at once (one save to the data repo)."""
+    """Sent / removed for one or many jobs in ONE save; remembers the last action so it can be undone."""
+    keys = list(keys)
+
     def m(s):
         now = dt.datetime.now(dt.timezone.utc).isoformat()
         for key in keys:
             j = s["jobs"].get(key, {})
             s["archive"][key] = {"status": status, "at": now, "title": j.get("title"), "company": j.get("company"),
                                  "urls": list((j.get("links") or {"x": j.get("url")}).values())}
-    update_state(m, f"{status} x{len(keys)}")
+    update_state(m, f"{status}: {keys[0]}" if len(keys) == 1 else f"{status} x{len(keys)}")
+    st.session_state.undo = {"keys": keys, "status": status}
+    for k in keys:
+        st.session_state.pop(f"sel-{k}", None)
 
 
-QSTATUS = {"queued": ("ממתין לסוכן", "#5b6474"), "ready": ("מולא · ממתין שתלחץ שלח", "#2a55c9"),
-           "needs_you": ("צריך אותך", "#9a5b00"), "unsupported": ("אתר שעוד לא נתמך", "#9a5b00"),
-           "skipped": ("נסגר בלי שליחה", "#5b6474"), "failed": ("נכשל", "#b3322f")}
+def restore_many(keys):
+    keys = list(keys)
 
-
-def queue_set(key, status=None):
-    """status None = take the job out of the send queue."""
     def m(s):
-        q = s.setdefault("queue", {})
-        if status is None:
-            q.pop(key, None)
-        else:
-            q[key] = {**q.get(key, {}), "status": status, "at": dt.datetime.now(dt.timezone.utc).isoformat()}
-    update_state(m, f"queue {status or 'remove'}: {key}")
+        for key in keys:
+            s["archive"].pop(key, None)
+    update_state(m, f"restore x{len(keys)}")
 
 
-def card(j, arc=False, queued=None, new=False):
-    fit = j.get("fit")
-    cls = "f-na" if fit is None else "f-hi" if fit >= 80 else "f-mid" if fit >= 60 else "f-lo"
-    with st.container(border=True):
-        c1, c2, c3 = st.columns([1, 7, 3], vertical_alignment="top")
-        c1.markdown(f'<div class="fit {cls}">{fit if fit is not None else "—"}<small>התאמה</small></div>', unsafe_allow_html=True)
-        if not arc and not queued:
-            c1.checkbox("בחר", key=f"sel-{j['key']}", help="סמן כדי להסיר כמה משרות ביחד")
-        tags = '<span class="tag" style="color:#fff;background:#2a55c9;border-color:#2a55c9">חדשה</span>' if new else ""
-        tags += "".join(f'<span class="tag" style="color:#7a3fb0;border-color:#c9a8e8">{LABEL.get(k, k)}</span>' for k in j.get("kws", []))  # search keyword(s) that found it
-        tags += "".join(f'<span class="tag">{BOARD.get(b, b)}</span>' for b in j.get("boards", []))
-        if j.get("easyApply"):
-            tags += '<span class="tag" style="color:#16794a">Easy Apply</span>'
-        if arc:
-            label = {"sent": "נשלח", "auto": "הוסר אוטומטית (סייבר / אבטחה)" if j.get("reason") == "cyber" else "הוסר אוטומטית (ציון מתחת ל-45)"}.get(j.get("status"), "הוסר")
-            if j.get("by") == "agent":
-                label += " · ע״י הסוכן"
-            tags += f'<span class="tag">{label}</span>'
-        if queued:
-            lbl, col = QSTATUS.get(queued.get("status"), (queued.get("status"), "#5b6474"))
-            note = f' — {queued["note"]}' if queued.get("note") else ""
-            tags += f'<span class="tag" style="color:{col};border-color:{col}">{lbl}{note}</span>'
-        cv = j.get("cv") or ""
-        lang = "עברית" if j.get("lang") == "he" else "אנגלית"
-        why = j.get("why") or (f"הדירוג נכשל: {j['scoreError']}" if j.get("scoreError") else "")
-        c2.markdown(
-            f'<div class="jt"><a href="{j.get("url")}" target="_blank">{j.get("title")}</a></div>'
-            f'<div class="sub">{j.get("company") or "—"} · {j.get("location") or "ישראל"} · פורסם {ago(j)}</div>'
-            f'<div style="font-size:.9rem;margin:4px 0">{why}</div>'
-            f'<div>{f"<span class=cv>קו״ח {lang}: {cv}</span>" if cv else ""}{tags}</div>', unsafe_allow_html=True)
-        k = j["key"]
-        if arc:
-            if c3.button("החזר", key=f"r-{k}"):
-                mark(k, "restore")
-                st.rerun()
-            return
-        if queued:
-            c3.link_button("פתח משרה", j.get("url") or "#", use_container_width=True)
-            if c3.button("הוצא מהתור", key=f"q-{k}", use_container_width=True):
-                queue_set(k, None)
-                st.rerun()
-            if queued.get("status") in ("needs_you", "skipped", "failed", "unsupported") and c3.button("נסה שוב", key=f"qr-{k}", use_container_width=True):
-                queue_set(k, "queued")
-                st.rerun()
-            return
-        if c3.button("לשליחה ←", key=f"qa-{k}", type="primary", use_container_width=True):
-            queue_set(k, "queued")
-            st.rerun()
-        c3.link_button("פתח משרה", j.get("url") or "#", use_container_width=True)
-        if cv:
-            if st.session_state.get("cv_open") == k:
-                try:
-                    c3.download_button("הורד קו״ח", cv_bytes(j.get("lang", "en"), cv), file_name=cv, mime="application/pdf",
-                                       key=f"d-{k}", use_container_width=True)
-                except Exception:
-                    c3.caption("הקובץ לא נמצא במאגר")
-            elif c3.button("קו״ח", key=f"c-{k}", use_container_width=True):
-                st.session_state.cv_open = k
-                st.rerun()
-        a, b = c3.columns(2)
-        if a.button("שלחתי", key=f"s-{k}", use_container_width=True):
-            mark(k, "sent")
-            st.rerun()
-        if b.button("הסר", key=f"x-{k}", use_container_width=True):
-            mark(k, "removed")
-            st.rerun()
+def mark(key, status):  # kept for older callers
+    if status == "restore":
+        restore_many([key])
+    else:
+        mark_many([key], status)
 
 
-state, _ = load_state()
-cap = int(secret("MAX_SEARCHES_PER_DAY", 30))  # Assaf 18 Nov: 30 a day (was 25) (the old MAX_RUNS_PER_DAY=10 secret is no longer read)
-used = runs_today(state)
-
-top_l, top_r = st.columns([4, 1])
-top_l.title("Job Scout")
-if top_r.button("יציאה"):
-    st.session_state.clear()
-    st.rerun()
-
-picked = st.pills("מילות חיפוש (אפשר כמה)", KEYWORDS, format_func=lambda k: LABEL.get(k, k), selection_mode="multi",
-                  default=st.session_state.get("kws_picked", ["marketing automation"]), key="kw_pick") or []
-free = st.text_input("מילים נוספות (מופרדות בפסיק)", key="kw_free", placeholder="למשל: lifecycle marketing, מנהל CRM")
-kws = list(dict.fromkeys(list(picked) + [w.strip().lower() for w in free.split(",") if w.strip()]))
-st.session_state.kws_picked = list(picked)
-c1, c2, c3 = st.columns([2, 2, 1], vertical_alignment="bottom")
-win = c1.segmented_control("לחפש משרות שפורסמו ב-", list(WINDOWS), format_func=lambda h: WINDOWS[h], default=48, key="win") or 0
-sort = c2.segmented_control("מיון", ["fit", "new"], format_func=lambda s: "התאמה" if s == "fit" else "הכי חדש", default="fit", key="sort") or "fit"
-only_new = c3.toggle("רק חדשות", key="only_new", help="רק משרות שנמצאו בחיפוש האחרון")
-
-PHASE = {"queued": "ממתין", "pulling": "מושך משרות", "scoring": "מדרג וקורות חיים", "done": "הסתיים", "error": "נכשל"}
-active = [i for i in SH["batches"].values() if not i["done"]]
-pending = sum(1 for i in active for v in i["kw"].values() if v.get("phase") not in ("done", "error"))
-left = cap - used - pending
-names = " + ".join(LABEL.get(k, k) for k in kws) or "בחר מילה"
-r1, r2 = st.columns([2, 3], vertical_alignment="center")
-mybatch = SH["batches"].get(st.session_state.get("batch") or "")
-running = bool(mybatch and not mybatch["done"])
-if r1.button(f"חפש · {names} · {WINDOWS[win]}", type="primary", disabled=running or not kws or len(kws) > left, use_container_width=True):
-    st.session_state.batch = start_batch(kws, win)  # runs in the background; results appear below while it works
-    st.session_state.pop("hist", None)
-    st.rerun()
-r2.caption(f"~$0.15–0.30 לכל מילת חיפוש · נבחרו {len(kws)} · היום {used + pending}/{cap} חיפושים"
-           + (" · יותר מילים ממה שנשאר היום" if len(kws) > left else ""))
+def sent_today(s):
+    today = dt.datetime.now(IL).date()
+    return sum(1 for a in s["archive"].values() if a.get("status") == "sent" and a.get("at") and to_il(a["at"]).date() == today)
 
 
-def batch_progress(info):
+@st.cache_data(ttl=300, show_spinner=False)
+def apify_usage():
+    try:
+        d = requests.get("https://api.apify.com/v2/users/me/limits", params={"token": secret("APIFY_API_TOKEN")}, timeout=10).json()["data"]
+        return d["current"]["monthlyUsageUsd"], d["limits"]["maxMonthlyUsageUsd"]
+    except Exception:
+        return None, None
+
+
+def active_batch():
+    """The search running now on this server (it survives a page refresh), else this session's last one."""
+    live = [(b, i) for b, i in SH["batches"].items() if not i["done"]]
+    if live:
+        return max(live, key=lambda x: x[1]["started"])
+    b = st.session_state.get("batch")
+    return (b, SH["batches"][b]) if b in SH["batches"] else (None, None)
+
+
+def batch_view(info, compact=False):
+    done = sum(1 for v in info["kw"].values() if v.get("phase") in ("done", "error"))
+    total = len(info["kws"])
     secs = int((info.get("ended") or time.time()) - info["started"])
-    lines = []
+    new = sum(v.get("new", 0) or 0 for v in info["kw"].values() if v.get("phase") == "done")
+    head = f"{'החיפוש הסתיים' if info['done'] else 'מחפש…'} · {done}/{total} מילים · {new} חדשות · {secs // 60}:{secs % 60:02d} דק'"
+    st.progress(done / max(1, total), text=head)
+    if compact:
+        return
+    rows = []
     for k in info["kws"]:
         v = info["kw"][k]
         extra = ""
         if v.get("phase") == "scoring" and v.get("new") is not None:
-            extra = f" · {v.get('scored', 0)}/{v['new']}"
-        if v.get("phase") == "done":
-            n, a = v.get("new", 0), v.get("auto", 0)
-            if n and a >= n:
-                extra = f" · {n} חדשות, כולן הוסרו אוטומטית (ציון מתחת ל-{MIN_FIT}), אין מה להציג"
-            else:
-                extra = f" · {n} חדשות" + (f", {a} הוסרו אוטומטית (מתחת ל-{MIN_FIT})" if a else "")
-        if v.get("phase") == "error":
-            extra = f" · {str(v.get('error', ''))[:80]}"
-        icon = {"done": "✓", "error": "✗"}.get(v.get("phase"), "…")
-        lines.append(f"{icon} **{LABEL.get(k, k)}** · {PHASE.get(v.get('phase'), v.get('phase'))}{extra}")
-    head = f"{'הסתיים' if info['done'] else 'מחפש'} · {secs // 60}:{secs % 60:02d} דק'"
-    return head, lines
+            extra = f"{v.get('scored', 0)}/{v['new']}"
+        elif v.get("phase") == "done":
+            extra = f"{v.get('new', 0)} חדשות" + (f" · {v.get('auto')} מתחת ל-{MIN_FIT}" if v.get("auto") else "")
+        elif v.get("phase") == "error":
+            extra = str(v.get("error", ""))[:80]
+        rows.append({"": {"done": "✅", "error": "⚠️"}.get(v.get("phase"), "⏳"), "מילה": lbl(k), "שלב": PHASE.get(v.get("phase"), v.get("phase")), "פרטים": extra})
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
 
-def kw_history(s, kw):
-    """History page for ONE search keyword: every run, and every job it ever found (open, queued, sent, removed, auto-removed)."""
-    queue = s.get("queue", {})
-    c_a, c_b = st.columns([5, 1], vertical_alignment="center")
-    c_a.subheader(f"היסטוריה · {LABEL.get(kw, kw)}")
-    if c_b.button("חזור", key="kwh_back", use_container_width=True):
-        st.session_state.pop("kwhist", None)
-        st.rerun()
-    runs = [r for r in s.get("runs", []) if r["kw"] == kw]
-    jobs = [j for j in s["jobs"].values() if kw in j.get("kws", [])]
-    opn, auto, done = [], [], []
-    for j in jobs:
-        k = j["key"]
-        a = s["archive"].get(k)
-        if a:
-            row = {**j, **a, "key": k}
-            (auto if a.get("status") == "auto" else done).append(row)
-        elif k not in queue:
-            opn.append(j)
-    qj = [{**j, "_q": queue[j["key"]]} for j in jobs if j["key"] in queue and j["key"] not in s["archive"]]
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("ריצות", len(runs))
-    m2.metric("משרות שנמצאו", len(jobs))
-    m3.metric("פתוחות", len(opn) + len(qj))
-    m4.metric(f"הוסרו אוטומטית (<{MIN_FIT})", len(auto))
-    if runs:
-        st.markdown("**ריצות**")
-        for r in runs:
-            at = dt.datetime.fromisoformat(r["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
-            per = " · ".join(f"{BOARD.get(b, b)} {v.get('kept', 0)}/{v.get('pulled', 0)}" for b, v in (r.get("stats") or {}).items())
-            note = f" · {r['autoRemoved']} הוסרו אוטומטית" if r.get("autoRemoved") else ""
-            st.caption(f"{at} · {WINDOWS.get(r.get('hours') or 0, 'שבוע')} · {r['new']} חדשות{note} · Apify ${r.get('apifyUsd') or '?'} + Claude ${r.get('claudeUsd')}"
-                       + (f"  \nלפי מקור (נכנסו/נמשכו): {per}" if per else ""))
-    else:
-        st.info("אין עדיין ריצות שמורות למילה הזאת.")
-    tabs = st.tabs([f"פתוחות ({len(opn) + len(qj)})", f"הוסרו אוטומטית ({len(auto)})", f"נשלחו / הוסרו ({len(done)})"])
-    with tabs[0]:
-        if not (opn or qj):
-            st.info("אין משרות פתוחות למילה הזאת.")
-        for j in sorted(opn, key=lambda j: -(j.get("fit") if j.get("fit") is not None else -1)):
-            card(j)
-        for j in qj:
-            card(j, queued=j["_q"])
-    with tabs[1]:
-        st.caption(f"משרות שקיבלו ציון מתחת ל-{MIN_FIT} ולא מוצגות בתוצאות. אפשר להחזיר כל אחת.")
-        if not auto:
-            st.info("אין משרות שהוסרו אוטומטית.")
-        for j in sorted(auto, key=lambda j: j.get("at", ""), reverse=True):
-            card(j, arc=True)
-    with tabs[2]:
-        if not done:
-            st.info("לא סימנת עדיין משרות של המילה הזאת.")
-        for j in sorted(done, key=lambda j: j.get("at", ""), reverse=True):
-            card(j, arc=True)
-
-
-def body():
-    s, _ = load_state()
-    if st.session_state.get("kwhist"):
-        kw_history(s, st.session_state.kwhist)
+def progress_live(compact=False):
+    b, info = active_batch()
+    if not info:
         return
-    info = SH["batches"].get(st.session_state.get("batch") or "")
-    if info:
-        head, lines = batch_progress(info)
-        with st.container(border=True):
-            st.markdown(f"**{head}**")
-            st.markdown("  \n".join(lines))
-            if info["done"] and st.button("סגור", key="close_batch"):
-                st.session_state.pop("batch", None)
-                st.rerun()
-        if info["done"] and not info.get("seen"):
-            info["seen"] = True
-            st.rerun(scope="app")  # refresh the counters at the top once the batch ends
-    view_kws = list(dict.fromkeys(kws + (info["kws"] if info else [])))
-    for k in view_kws:
-        last = next((r for r in s.get("runs", []) if r["kw"] == k), None)
-        if not last:
-            continue
-        at = dt.datetime.fromisoformat(last["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
-        auto_note = f" ({last['autoRemoved']} מתחת ל-45 הוסרו)" if last.get("autoRemoved") else ""
-        per = " · ".join(f"{BOARD.get(b, b)} {v.get('kept', 0)}/{v.get('pulled', 0)}" for b, v in (last.get("stats") or {}).items())
-        c_l, c_h = st.columns([5, 1], vertical_alignment="center")
-        c_l.caption(f"ריצה אחרונה ל-{LABEL.get(k, k)}: {at} · {last['new']} חדשות{auto_note} · Apify ${last.get('apifyUsd') or '?'} + Claude ${last.get('claudeUsd')}"
-                    + (f"  \nלפי מקור (נכנסו/נמשכו): {per}" if per else ""))
-        if c_h.button("היסטוריה", key=f"kh-{k}", use_container_width=True):
-            st.session_state.kwhist = k
+    batch_view(info, compact)
+    if info["done"] and st.session_state.get("seen_batch") != b:
+        st.session_state.seen_batch = b
+        st.rerun(scope="app")  # refresh lists and counters once the search ends
+
+
+def undo_bar():
+    u = st.session_state.get("undo")
+    if not u:
+        return
+    word = "סומנו כנשלחו" if u["status"] == "sent" else "הוסרו"
+    a, b, c = st.columns([5, 1, 1], vertical_alignment="center")
+    a.success(f"{len(u['keys'])} משרות {word}")
+    if b.button("↩ בטל", key="undo_btn", width="stretch"):
+        restore_many(u["keys"])
+        st.session_state.pop("undo", None)
+        st.rerun()
+    if c.button("סגור", key="undo_close", width="stretch"):
+        st.session_state.pop("undo", None)
+        st.rerun()
+
+
+def new_since(s):
+    runs_ = s.get("runs", [])
+    if not runs_:
+        return "9999"
+    last_b = max(runs_, key=lambda r: r["at"]).get("batch")
+    return min((r["at"] for r in runs_ if last_b and r.get("batch") == last_b), default="9999")
+
+
+def fit_cls(fit):
+    return "f-na" if fit is None else "f-hi" if fit >= 80 else "f-mid" if fit >= 60 else "f-lo"
+
+
+def card(j, new=False):
+    k = j["key"]
+    fit = j.get("fit")
+    cv = j.get("cv") or ""
+    tags = '<span class="tag t-new">חדשה</span>' if new else ""
+    tags += "".join(f'<span class="tag t-kw">{lbl(x)}</span>' for x in j.get("kws", []))
+    tags += "".join(f'<span class="tag">{BOARD.get(b, b)}</span>' for b in j.get("boards", []))
+    if j.get("easyApply"):
+        tags += '<span class="tag t-ok">Easy Apply</span>'
+    if cv:
+        tags += f'<span class="tag t-cv">קו״ח {"עב" if j.get("lang") == "he" else "EN"}: {cv.replace(".pdf", "")}</span>'
+    why = j.get("why") or (f"הדירוג נכשל: {j['scoreError']}" if j.get("scoreError") else "")
+    gaps = j.get("gaps") or []
+    more = ("<br>" + " · ".join(str(g) for g in gaps[:3])) if gaps else ""
+    with st.container(border=True):
+        c0, c1, c2 = st.columns([0.35, 0.9, 10], vertical_alignment="top")
+        c0.checkbox("בחר", key=f"sel-{k}", label_visibility="collapsed")
+        c1.markdown(f'<div class="fit {fit_cls(fit)}">{fit if fit is not None else "—"}<small>התאמה</small></div>', unsafe_allow_html=True)
+        c2.markdown(
+            f'<div class="jt"><a href="{j.get("url")}" target="_blank">{j.get("title")}</a></div>'
+            f'<div class="sub">{j.get("company") or "—"} · {j.get("location") or "ישראל"} · {ago(j)}</div>'
+            f'<div class="tags">{tags}</div>'
+            + (f'<details class="why"><summary>למה זה מתאים</summary>{why}{more}</details>' if why else ""),
+            unsafe_allow_html=True)
+        a1, a2, a3, a4 = c2.columns([2, 1.3, 1.3, 1.3])
+        a1.link_button("פתח והגש ↗", j.get("url") or "#", type="primary", width="stretch")
+        if cv and st.session_state.get("cv_open") == k:
+            try:
+                a2.download_button("⬇ הורד", cv_bytes(j.get("lang", "en"), cv), file_name=cv, mime="application/pdf", key=f"d-{k}", width="stretch")
+            except Exception:
+                a2.caption("הקובץ לא נמצא")
+        elif cv and a2.button("קו״ח", key=f"c-{k}", width="stretch"):
+            st.session_state.cv_open = k
+            st.rerun()
+        if a3.button("✓ שלחתי", key=f"s-{k}", width="stretch"):
+            mark_many([k], "sent")
+            st.rerun()
+        if a4.button("✕ הסר", key=f"x-{k}", width="stretch"):
+            mark_many([k], "removed")
             st.rerun()
 
+
+def job_table(rows, key, height=None):
+    """Selectable table; returns the selected job keys."""
+    if not rows:
+        return []
+    df = pd.DataFrame([{
+        "ציון": r.get("fit") if r.get("fit") is not None else 0,
+        "תפקיד": r.get("title") or "", "חברה": r.get("company") or "", "פורסם": ago(r),
+        "מילה": ", ".join(lbl(x) for x in r.get("kws", [])), "מקור": ", ".join(BOARD.get(b, b) for b in r.get("boards", [])),
+        "קישור": r.get("url") or "", "למה": r.get("why") or "", **({"סטטוס": r["_status"]} if "_status" in r else {}),
+        **({"תאריך": to_il(r["at"]).strftime("%d.%m %H:%M")} if r.get("at") else {}),
+    } for r in rows])
+    ev = st.dataframe(df, hide_index=True, width="stretch", on_select="rerun", selection_mode="multi-row", key=key,
+                      height=height or min(38 + 35 * len(rows), 640),
+                      column_config={
+                          "ציון": st.column_config.ProgressColumn("ציון", min_value=0, max_value=100, format="%d", width="small"),
+                          "תפקיד": st.column_config.TextColumn("תפקיד", width="large"),
+                          "קישור": st.column_config.LinkColumn("קישור", display_text="פתח ↗", width="small"),
+                          "למה": st.column_config.TextColumn("למה", width="large"),
+                      })
+    return [rows[i]["key"] for i in ev.selection.rows] if ev and ev.selection else []
+
+
+# ---------------- pages ----------------
+def page_inbox():
+    b, info = active_batch()
+    running = bool(info and not info["done"])
+    st.fragment(run_every=6 if running else None)(inbox_body)()  # new jobs flow in while a search runs
+
+
+def inbox_body():
+    s, _ = load_state()
+    undo_bar()
     queue = s.get("queue", {})
+    opn = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
+    ns = new_since(s)
+    is_new = lambda j: (j.get("foundAt") or "") >= ns
     hist = st.session_state.get("hist")
-    if hist:  # a past search reopened from the history tab
+    if hist:
         hk = set(hist["keys"])
-        mine = [j for k, j in s["jobs"].items() if k in hk and k not in s["archive"] and k not in queue]
-        shown = list(mine)
-        c_a, c_b = st.columns([4, 1], vertical_alignment="center")
-        c_a.info(f"מציג תוצאות שמורות: {hist['label']} · {len(mine)} פתוחות מתוך {len(hk)}")
-        if c_b.button("חזור", key="hist_back"):
+        opn = [j for j in opn if j["key"] in hk]
+        a, c = st.columns([5, 1], vertical_alignment="center")
+        a.info(f"מציג חיפוש שמור: {hist['label']}")
+        if c.button("הצג הכל", key="hist_back", width="stretch"):
             st.session_state.pop("hist", None)
             st.rerun()
-    else:
-        # Assaf 18 Nov: every job not yet marked sent/removed stays on screen after a new login, for every keyword and any age;
-        # the keyword pills and the time window only steer the next search
-        mine = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
-        shown = list(mine)
-    # "new" = found by the latest search batch (Assaf 18 Nov): its earliest finished keyword marks the start
-    runs_ = s.get("runs", [])
-    last_b = max(runs_, key=lambda r: r["at"]).get("batch") if runs_ else None
-    new_since = min((r["at"] for r in runs_ if last_b and r.get("batch") == last_b), default="9999")
-    is_new = lambda j: (j.get("foundAt") or "") >= new_since
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("פתוחות", len(opn))
+    m2.metric("חדשות", help="נמצאו בחיפוש האחרון", value= sum(1 for j in opn if is_new(j)))
+    m3.metric("ציון 70+", sum(1 for j in opn if (j.get("fit") or 0) >= 70))
+    m4.metric("נשלחו היום", sent_today(s))
+
+    with st.container(border=True):
+        f1, f2, f3, f4 = st.columns([3, 2.2, 2, 1.6])
+        q = f1.text_input("חיפוש", placeholder="🔎 חברה או תפקיד…", key="f_q", label_visibility="collapsed")
+        kw_opts = sorted({k for j in opn for k in j.get("kws", [])}, key=lbl)
+        f_kw = f2.multiselect("מילה", kw_opts, format_func=lbl, placeholder="כל המילים", key="f_kw", label_visibility="collapsed")
+        src_opts = sorted({x for j in opn for x in j.get("boards", [])})
+        f_src = f3.multiselect("מקור", src_opts, format_func=lambda x: BOARD.get(x, x), placeholder="כל המקורות", key="f_src", label_visibility="collapsed")
+        f_min = f4.selectbox("ציון", [0, 60, 70, 80], format_func=lambda v: "כל הציונים" if not v else f"ציון {v}+", key="f_min", label_visibility="collapsed")
+        g1, g2, g3, g4 = st.columns([3.2, 1.3, 1.8, 2])
+        age = g1.segmented_control("פורסם", list(AGE), format_func=lambda a: AGE[a], default="all", key="age_view", label_visibility="collapsed") or "all"
+        only_new = g2.toggle("רק חדשות", key="only_new")
+        sort = g3.selectbox("מיון", ["fit", "new", "company"], format_func={"fit": "מיון: התאמה", "new": "מיון: הכי חדש", "company": "מיון: חברה"}.get,
+                            key="sort", label_visibility="collapsed")
+        view = g4.segmented_control("תצוגה", ["cards", "table"], format_func={"cards": "▦ כרטיסים", "table": "☰ טבלה"}.get, default="cards",
+                                    key="view", label_visibility="collapsed") or "cards"
+
+    shown = opn
+    if q.strip():
+        ql = q.strip().lower()
+        shown = [j for j in shown if ql in str(j.get("title", "")).lower() or ql in str(j.get("company", "")).lower()]
+    if f_kw:
+        shown = [j for j in shown if set(f_kw) & set(j.get("kws", []))]
+    if f_src:
+        shown = [j for j in shown if set(f_src) & set(j.get("boards", []))]
+    if f_min:
+        shown = [j for j in shown if (j.get("fit") or 0) >= f_min]
     if only_new:
         shown = [j for j in shown if is_new(j)]
-    AGE = {"all": "הכל", "1": "יום", "3": "3 ימים", "7": "שבוע", "older": "מעל שבוע"}
-    age = st.segmented_control("הצג משרות שפורסמו ב-", list(AGE), format_func=lambda a: AGE[a], default="all", key="age_view") or "all"
-    if not hist and age != "all":
-        lim = lambda j: (0 if j.get("dayOnly") else 1)  # day-only dates get no extra hour
-        if age == "older":
-            shown = [j for j in shown if age_h(j) > 7 * 24 + lim(j)]
+    if age != "all":
+        lim = lambda j: 0 if j.get("dayOnly") else 1
+        shown = [j for j in shown if ((age_h(j) > 7 * 24 + lim(j)) if age == "older" else (age_h(j) <= int(age) * 24 + lim(j)))]
+    shown = sorted(shown, key={"fit": lambda j: (-(j.get("fit") if j.get("fit") is not None else -1), age_h(j)),
+                               "new": age_h, "company": lambda j: str(j.get("company") or "")}[sort])
+
+    if not shown:
+        if not opn:
+            st.info("אין משרות פתוחות 🎉  כל מה שנמצא כבר סומן. לחיפוש חדש עבור ל\"חיפוש חדש\" בתפריט.")
         else:
-            shown = [j for j in shown if age_h(j) <= int(age) * 24 + lim(j)]
-    shown.sort(key=(lambda j: (-(j.get("fit") if j.get("fit") is not None else -1), age_h(j))) if sort == "fit" else age_h)
-    qjobs = sorted(({**s["jobs"].get(k, {"title": "?"}), "key": k, "_q": q} for k, q in queue.items() if k not in s["archive"]),
-                   key=lambda j: j["_q"].get("at", ""), reverse=True)
-    arc = sorted(({**s["jobs"].get(k, {}), **a, "key": k} for k, a in s["archive"].items()), key=lambda j: j.get("at", ""), reverse=True)
+            st.info("אין משרות שמתאימות לסינון. נקה את הסינון כדי לראות את כל המשרות הפתוחות.")
+        return
+
+    if view == "table":
+        st.caption(f"{len(shown)} משרות · סמן שורות בעמודה השמאלית ואז בחר פעולה")
+        sel = job_table(shown, key="tbl_inbox", height=640)
+        t1, t2, _ = st.columns([2, 2, 4])
+        if t1.button(f"✓ סמן כנשלחו ({len(sel)})", key="tbl_sent", disabled=not sel, type="primary", width="stretch"):
+            mark_many(sel, "sent")
+            st.rerun()
+        if t2.button(f"✕ הסר ({len(sel)})", key="tbl_rm", disabled=not sel, width="stretch"):
+            mark_many(sel, "removed")
+            st.rerun()
+        return
+
+    n_all = len(shown)
+    p1, p2, p3, p4 = st.columns([1.6, 3, 1, 1], vertical_alignment="center")
+    size = p1.segmented_control("בעמוד", [10, 25, 50], default=25, key="page_size", label_visibility="collapsed") or 25
+    pages = max(1, -(-n_all // size))
+    sig = (q, tuple(f_kw), tuple(f_src), f_min, age, only_new, sort, size, bool(hist))
+    if st.session_state.get("page_sig") != sig:
+        st.session_state.page_sig, st.session_state.page = sig, 1
+    page = min(max(1, st.session_state.get("page", 1)), pages)
+    lo, hi = (page - 1) * size, min(page * size, n_all)
+    p2.markdown(f"**מציג {lo + 1}–{hi} מתוך {n_all}** · עמוד {page}/{pages}")
+    if p3.button("→", key="pg_prev", disabled=page <= 1, width="stretch", help="העמוד הקודם"):
+        st.session_state.page = page - 1
+        st.rerun()
+    if p4.button("←", key="pg_next", disabled=page >= pages, width="stretch", help="העמוד הבא"):
+        st.session_state.page = page + 1
+        st.rerun()
+    page_jobs = shown[lo:hi]
+    sel = [j["key"] for j in page_jobs if st.session_state.get(f"sel-{j['key']}")]
+    b1, b2, b3, b4 = st.columns([2, 2, 2, 3], vertical_alignment="center")
+    if b1.button(f"✓ נשלחו ({len(sel)})", key="sel_sent", disabled=not sel, width="stretch"):
+        mark_many(sel, "sent")
+        st.rerun()
+    if b2.button(f"✕ הסר מסומנות ({len(sel)})", key="rm_sel", disabled=not sel, width="stretch"):
+        mark_many(sel, "removed")
+        st.rerun()
+    if st.session_state.get("rm_all_ask"):
+        b4.warning(f"להסיר את כל {len(page_jobs)} המשרות בעמוד?")
+        y, n = b4.columns(2)
+        if y.button("כן, הסר", key="rm_all_yes", type="primary", width="stretch"):
+            st.session_state.pop("rm_all_ask", None)
+            mark_many([j["key"] for j in page_jobs], "removed")
+            st.rerun()
+        if n.button("ביטול", key="rm_all_no", width="stretch"):
+            st.session_state.pop("rm_all_ask", None)
+            st.rerun()
+    elif b3.button(f"הסר הכל בעמוד ({len(page_jobs)})", key="rm_all", width="stretch"):
+        st.session_state.rm_all_ask = True
+        st.rerun()
+    for j in page_jobs:
+        card(j, new=is_new(j))
+    if pages > 1:
+        n1, n2, n3 = st.columns([1, 3, 1], vertical_alignment="center")
+        if n1.button("→ הקודם", key="pg_prev_b", disabled=page <= 1, width="stretch"):
+            st.session_state.page = page - 1
+            st.rerun()
+        n2.caption(f"עמוד {page} מתוך {pages}")
+        if n3.button("הבא ←", key="pg_next_b", disabled=page >= pages, width="stretch"):
+            st.session_state.page = page + 1
+            st.rerun()
+
+
+def _preset(keys):
+    for i, (g, items) in enumerate(GROUPS.items()):
+        st.session_state[f"kwg_{i}"] = [k for k in items if k in keys]
+
+
+def page_search():
+    s, _ = load_state()
+    cap = int(secret("MAX_SEARCHES_PER_DAY", 30))
+    b, info = active_batch()
+    running = bool(info and not info["done"])
+    if info:
+        with st.container(border=True):
+            st.fragment(run_every=3 if running else None)(progress_live)()
+            if info["done"]:
+                c1, c2 = st.columns(2)
+                if c1.button("לתיבת המשרות ←", key="go_inbox", type="primary", width="stretch"):
+                    st.session_state.only_new = True
+                    st.switch_page(PAGES["inbox"])
+                if c2.button("סגור", key="close_batch", width="stretch"):
+                    st.session_state.pop("batch", None)
+                    if b in SH["batches"]:
+                        SH["batches"][b]["closed"] = True
+                    st.rerun()
+
+    st.markdown("##### מילות חיפוש")
+    p = st.columns(5)
+    p[0].button("⭐ 10 החזקות", on_click=_preset, args=(TOP10,), width="stretch")
+    p[1].button("🆕 12 החדשות", on_click=_preset, args=(NEW12,), width="stretch")
+    p[2].button("כל המילים", on_click=_preset, args=(KEYWORDS,), width="stretch")
+    p[3].button("נקה", on_click=_preset, args=([],), width="stretch")
+    picked = []
+    for i, (g, items) in enumerate(GROUPS.items()):
+        if f"kwg_{i}" not in st.session_state:
+            st.session_state[f"kwg_{i}"] = []
+        picked += st.pills(g, items, format_func=lbl, selection_mode="multi", key=f"kwg_{i}") or []
+    free = st.text_input("מילים נוספות (מופרדות בפסיק)", key="kw_free", placeholder="למשל: revops, מנהל CRM")
+    kws = list(dict.fromkeys(picked + [w.strip().lower() for w in free.split(",") if w.strip()]))
+
+    used = runs_today(s)
+    pending = sum(1 for i in SH["batches"].values() if not i["done"] for v in i["kw"].values() if v.get("phase") not in ("done", "error"))
+    left = cap - used - pending
+    with st.container(border=True):
+        w1, w2 = st.columns([3, 2], vertical_alignment="bottom")
+        win = w1.segmented_control("משרות שפורסמו ב-", list(WINDOWS), format_func=lambda h: WINDOWS[h], default=48, key="win") or 0
+        mins = -(-len(kws) // 3) * 3
+        w2.markdown(f"**{len(kws)} מילים** · כ-${len(kws) * USD_PER_KW:.2f} · כ-{mins} דק'  \n"
+                    f"<span class='sub'>היום {used + pending}/{cap} חיפושים · נשארו {max(0, left)}</span>", unsafe_allow_html=True)
+        over = len(kws) > left
+        if over:
+            st.warning(f"בחרת {len(kws)} מילים, אבל נשארו היום רק {max(0, left)} חיפושים. הקטן את הבחירה או העלה את MAX_SEARCHES_PER_DAY ב-Secrets.")
+        if st.button(f"🔍 חפש {len(kws)} מילים · {WINDOWS[win]}", type="primary", disabled=running or not kws or over, width="stretch"):
+            st.session_state.batch = start_batch(kws, win)
+            st.session_state.pop("hist", None)
+            st.rerun()
+        if running:
+            st.caption("חיפוש רץ כבר. אפשר לעבור לתיבת המשרות; משרות נכנסות לשם בכל פעם שמילה מסתיימת.")
+
+
+def page_history():
+    s, _ = load_state()
+    st.markdown("##### חיפושים אחרונים")
+    st.caption(f"{HISTORY_HOURS} השעות האחרונות. \"פתח\" מציג בתיבה רק את המשרות של החיפוש הזה, בלי עלות.")
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=HISTORY_HOURS)).isoformat()
     groups = {}
     for r in s.get("runs", []):
         if r.get("keys") and r["at"] >= cutoff:
             groups.setdefault(r.get("batch") or r["at"], []).append(r)
-
-    t1, tq, th, t2 = st.tabs([f"תוצאות ({len(shown)})", f"תור שליחה ({len(qjobs)})", f"היסטוריה ({len(groups)})", f"ארכיון ({len(arc)})"])
-    with t1:
-        if not shown:
-            if running:
-                st.info("החיפוש רץ. משרות חדשות יופיעו כאן ברגע שכל מילה מסתיימת.")
-            elif hist:
-                st.info("כל המשרות מהחיפוש הזה כבר בארכיון או בתור.")
-            elif mine and (only_new or age != "all"):
-                st.info("אין משרות שמתאימות לסינון. בחר \"הכל\" או כבה \"רק חדשות\" כדי לראות את כל המשרות הפתוחות.")
-            else:
-                ran = any(r["kw"] in view_kws for r in s.get("runs", []))
-                lastauto = sum((next((r for r in s.get("runs", []) if r["kw"] == k), {}).get("autoRemoved") or 0) for k in view_kws)
-                if lastauto:
-                    st.info(f"הריצה האחרונה מצאה {lastauto} משרות חדשות, אבל כולן קיבלו ציון מתחת ל-{MIN_FIT} והוסרו אוטומטית, לכן אין מה להציג. "
-                            f"לחץ \"היסטוריה\" ליד המילה כדי לראות אותן ולהחזיר.")
-                else:
-                    st.info("אין משרות פתוחות. כל מה שנמצא כבר סומן כנשלח או הוסר." if ran else "אין משרות פתוחות. החיפוש ירוץ רק כשתלחץ \"חפש\".")
-        # Assaf 18 Nov: page size 10 / 25 / 50 + "showing X–Y of Z"; bulk actions work on the page on screen
-        n_all = len(shown)
-        p1, p2 = st.columns([2, 3], vertical_alignment="bottom")
-        size = p1.segmented_control("תוצאות בעמוד", [10, 25, 50], default=25, key="page_size") or 25
-        pages = max(1, -(-n_all // size))
-        sig = (age, only_new, sort, size, n_all if hist else 0)
-        if st.session_state.get("page_sig") != sig:
-            st.session_state.page_sig, st.session_state.page = sig, 1
-        page = min(max(1, st.session_state.get("page", 1)), pages)
-        lo, hi = (page - 1) * size, min(page * size, n_all)
-        p2.markdown(f"**מציג {lo + 1 if n_all else 0}–{hi} מתוך {n_all}** · עמוד {page} מתוך {pages}")
-        page_jobs = shown[lo:hi]
-
-        def nav(where):
-            a_, b_, c_ = st.columns([1, 2, 1], vertical_alignment="center")
-            if a_.button("→ הקודם", key=f"pg_prev_{where}", disabled=page <= 1, use_container_width=True):
-                st.session_state.page = page - 1
-                st.rerun()
-            b_.caption(f"עמוד {page} מתוך {pages}")
-            if c_.button("הבא ←", key=f"pg_next_{where}", disabled=page >= pages, use_container_width=True):
-                st.session_state.page = page + 1
-                st.rerun()
-        if pages > 1:
-            nav("top")
-        if page_jobs:
-            shown_all, shown = shown, page_jobs
-            sel = [j["key"] for j in shown if st.session_state.get(f"sel-{j['key']}")]
-            b1, b2, b3 = st.columns([2, 2, 3], vertical_alignment="center")
-            if b1.button(f"הסר מסומנות ({len(sel)})", key="rm_sel", disabled=not sel, use_container_width=True):
-                mark_many(sel, "removed")
-                for k in sel:
-                    st.session_state.pop(f"sel-{k}", None)
-                st.rerun()
-            if st.session_state.get("rm_all_ask"):
-                b3.warning(f"להסיר את כל {len(shown)} המשרות שבעמוד הזה?")
-                y, n = b3.columns(2)
-                if y.button("כן, הסר הכל", key="rm_all_yes", type="primary", use_container_width=True):
-                    keys = [j["key"] for j in shown]
-                    mark_many(keys, "removed")
-                    for k in keys:
-                        st.session_state.pop(f"sel-{k}", None)
-                    st.session_state.pop("rm_all_ask", None)
-                    st.rerun()
-                if n.button("ביטול", key="rm_all_no", use_container_width=True):
-                    st.session_state.pop("rm_all_ask", None)
-                    st.rerun()
-            elif b2.button(f"הסר הכל בעמוד ({len(shown)})", key="rm_all", use_container_width=True, help="מסיר את כל המשרות שבעמוד הזה"):
-                st.session_state.rm_all_ask = True
-                st.rerun()
-        for j in page_jobs:
-            card(j, new=is_new(j))
-        if pages > 1:
-            nav("bottom")
-    with tq:
-        if not qjobs:
-            st.info("התור ריק. לחץ \"לשליחה ←\" על משרה בתוצאות, ואז הפעל את סוכן השליחה במחשב שלך.")
-        else:
-            st.caption("סוכן השליחה רץ במחשב שלך: `node job-engine/apply-agent/apply.mjs`. הוא ממלא את הטופס ועוצר; אתה לוחץ \"שלח\" בדפדפן שלו.")
-        for j in qjobs:
-            card(j, queued=j["_q"])
-    with th:
-        st.caption(f"חיפושים מ-{HISTORY_HOURS} השעות האחרונות. פתיחה טוענת את התוצאות מהזיכרון, בלי חיפוש ובלי עלות.")
-        if not groups:
-            st.info("אין עדיין חיפושים שמורים. חיפושים מעכשיו והלאה יישמרו כאן ל-72 שעות.")
-        for g, runs in sorted(groups.items(), key=lambda x: x[1][0]["at"], reverse=True):
-            at = dt.datetime.fromisoformat(runs[0]["at"].replace("Z", "+00:00")).astimezone(IL).strftime("%d.%m %H:%M")
-            keys = list(dict.fromkeys(k for r in runs for k in r["keys"]))
-            open_n = sum(1 for k in keys if k not in s["archive"] and k not in queue)
-            label = f"{at} · {' + '.join(LABEL.get(r['kw'], r['kw']) for r in runs)} · {WINDOWS.get(runs[0].get('hours') or 0, 'שבוע')}"
-            a, b = st.columns([4, 1], vertical_alignment="center")
-            a.markdown(f"**{label}**  \n{len(keys)} משרות · {open_n} עדיין פתוחות")
-            if b.button("פתח", key=f"h-{g}", use_container_width=True):
+    if not groups:
+        st.info("אין חיפושים מ-72 השעות האחרונות.")
+    for g, runs in sorted(groups.items(), key=lambda x: max(r["at"] for r in x[1]), reverse=True):
+        keys = list(dict.fromkeys(k for r in runs for k in r["keys"]))
+        open_n = sum(1 for k in keys if k not in s["archive"])
+        at = to_il(min(r["at"] for r in runs)).strftime("%d.%m %H:%M")
+        label = f"{at} · {len(runs)} מילים · {WINDOWS.get(runs[0].get('hours') or 0, 'שבוע')}"
+        with st.container(border=True):
+            a, c = st.columns([5, 1], vertical_alignment="center")
+            a.markdown(f"**{label}** · {sum(r.get('new', 0) for r in runs)} חדשות · {open_n} עדיין פתוחות  \n"
+                       + " ".join(f"<span class='tag t-kw'>{lbl(r['kw'])} · {r.get('new', 0)}</span>" for r in runs), unsafe_allow_html=True)
+            if c.button("פתח", key=f"h-{g}", width="stretch", disabled=not open_n):
                 st.session_state.hist = {"keys": keys, "label": label}
+                st.switch_page(PAGES["inbox"])
+
+    st.markdown("##### לפי מילה")
+    have = [k for k in KEYWORDS if any(r["kw"] == k for r in s.get("runs", []))] + \
+           sorted({r["kw"] for r in s.get("runs", []) if r["kw"] not in KEYWORDS})
+    kw = st.selectbox("מילה", have, format_func=lbl, index=None, placeholder="בחר מילה", label_visibility="collapsed")
+    if not kw:
+        return
+    runs = [r for r in s.get("runs", []) if r["kw"] == kw]
+    st.dataframe(pd.DataFrame([{
+        "תאריך": to_il(r["at"]).strftime("%d.%m %H:%M"), "חלון": WINDOWS.get(r.get("hours") or 0, "שבוע"), "נמצאו": r.get("found", 0),
+        "חדשות": r.get("new", 0), f"מתחת ל-{MIN_FIT}": r.get("autoRemoved", 0),
+        "לפי מקור (נכנסו/נשלפו)": " · ".join(f"{BOARD.get(b, b)} {v.get('kept', 0)}/{v.get('pulled', 0)}" for b, v in (r.get("stats") or {}).items()),
+    } for r in runs]), hide_index=True, width="stretch")
+    ST = {"sent": "נשלח", "removed": "הוסר", "auto": f"מתחת ל-{MIN_FIT}"}
+    jobs = [{**j, "_status": ST.get((s["archive"].get(j["key"]) or {}).get("status"), "פתוח")} for j in s["jobs"].values() if kw in j.get("kws", [])]
+    st.caption(f"{len(jobs)} משרות נמצאו במילה הזאת")
+    job_table(sorted(jobs, key=lambda j: -(j.get("fit") or 0)), key=f"kwjobs_{kw}")
+
+
+def page_archive():
+    s, _ = load_state()
+    rows = {"sent": [], "removed": [], "auto": []}
+    for k, a in s["archive"].items():
+        rows.setdefault(a.get("status", "removed"), []).append({**s["jobs"].get(k, {}), **a, "key": k})
+    q = st.text_input("חיפוש", placeholder="🔎 חברה או תפקיד…", key="arc_q", label_visibility="collapsed")
+    tabs = st.tabs([f"✓ נשלחו ({len(rows['sent'])})", f"✕ הוסרו ({len(rows['removed'])})", f"⤓ ציון נמוך ({len(rows['auto'])})"])
+    for tab, st_ in zip(tabs, ["sent", "removed", "auto"]):
+        with tab:
+            lst = sorted(rows[st_], key=lambda j: j.get("at", ""), reverse=True)
+            if q.strip():
+                ql = q.strip().lower()
+                lst = [j for j in lst if ql in str(j.get("title", "")).lower() or ql in str(j.get("company", "")).lower()]
+            if st_ == "auto":
+                st.caption(f"משרות שקיבלו ציון מתחת ל-{MIN_FIT} ולא הוצגו. אפשר להחזיר לתיבה.")
+            if not lst:
+                st.info("אין כאן משרות.")
+                continue
+            sel = job_table(lst, key=f"arc_{st_}", height=560)
+            if st.button(f"↩ החזר לתיבה ({len(sel)})", key=f"restore_{st_}", disabled=not sel):
+                restore_many(sel)
                 st.rerun()
-    with t2:
-        if not arc:
-            st.info("הארכיון ריק. משרות שתסמן \"שלחתי\" או \"הסר\" יגיעו לכאן ולא יופיעו שוב בחיפושים.")
-        for j in arc:
-            card(j, arc=True)
 
 
-st.fragment(run_every=4 if running else None)(body)()
+def page_stats():
+    s, _ = load_state()
+    arc, jobs = s["archive"], s["jobs"]
+    today = dt.datetime.now(IL).date()
+    days = [today - dt.timedelta(days=i) for i in range(13, -1, -1)]
+    per_day = {d: 0 for d in days}
+    for a in arc.values():
+        if a.get("status") == "sent" and a.get("at"):
+            d = to_il(a["at"]).date()
+            if d in per_day:
+                per_day[d] += 1
+    goal = int(secret("DAILY_GOAL", 50))
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("נשלחו היום", per_day[today], f"יעד {goal}")
+    m2.metric("נשלחו ב-7 ימים", sum(v for d, v in per_day.items() if d > today - dt.timedelta(days=7)))
+    m3.metric("נשלחו בסך הכל", sum(1 for a in arc.values() if a.get("status") == "sent"))
+    usd, cap_usd = apify_usage()
+    m4.metric("Apify החודש", f"${usd:.2f}" if usd is not None else "?", f"מתוך ${cap_usd:.0f}" if cap_usd else None, delta_color="off")
+    st.markdown("##### הגשות ביום (14 ימים)")
+    st.bar_chart(pd.DataFrame({"נשלחו": list(per_day.values())}, index=[d.strftime("%d.%m") for d in days]), height=220)
+
+    st.markdown("##### לפי מילה")
+    rows = []
+    for k in list(dict.fromkeys(KEYWORDS + [r["kw"] for r in s.get("runs", [])])):
+        runs = [r for r in s.get("runs", []) if r["kw"] == k]
+        js = [j for j in jobs.values() if k in j.get("kws", [])]
+        if not runs and not js:
+            continue
+        rows.append({"מילה": lbl(k), "חיפושים": len(runs), "משרות": len(js), "ציון 45+": sum(1 for j in js if (j.get("fit") or 0) >= 45),
+                     "ציון 70+": sum(1 for j in js if (j.get("fit") or 0) >= 70),
+                     "נשלחו": sum(1 for j in js if (arc.get(j["key"]) or {}).get("status") == "sent"),
+                     "הוסרו": sum(1 for j in js if (arc.get(j["key"]) or {}).get("status") == "removed")})
+    st.dataframe(pd.DataFrame(rows).sort_values("נשלחו", ascending=False), hide_index=True, width="stretch",
+                 column_config={"נשלחו": st.column_config.ProgressColumn("נשלחו", min_value=0, max_value=max([r["נשלחו"] for r in rows] + [1]), format="%d")})
+
+    st.markdown("##### לפי מקור")
+    src = {}
+    for j in jobs.values():
+        for b in j.get("boards", []):
+            o = src.setdefault(b, {"מקור": BOARD.get(b, b), "משרות": 0, "ציון 45+": 0, "נשלחו": 0})
+            o["משרות"] += 1
+            o["ציון 45+"] += (j.get("fit") or 0) >= 45
+            o["נשלחו"] += (arc.get(j["key"]) or {}).get("status") == "sent"
+    st.dataframe(pd.DataFrame(sorted(src.values(), key=lambda o: -o["נשלחו"])), hide_index=True, width="stretch")
+    st.caption("עלות משוערת: כ-$0.25 לכל מילת חיפוש (Apify כ-$0.16 + Claude כ-$0.09).")
+
+
+# ---------------- app shell ----------------
+state, _ = load_state()
+PAGES = {
+    "inbox": st.Page(page_inbox, title="משרות", icon=":material/inbox:", url_path="inbox", default=True),
+    "search": st.Page(page_search, title="חיפוש חדש", icon=":material/search:", url_path="search"),
+    "history": st.Page(page_history, title="היסטוריה", icon=":material/history:", url_path="history"),
+    "archive": st.Page(page_archive, title="ארכיון", icon=":material/inventory_2:", url_path="archive"),
+    "stats": st.Page(page_stats, title="סטטיסטיקה", icon=":material/insights:", url_path="stats"),
+}
+nav = st.navigation(list(PAGES.values()), position="sidebar")
+with st.sidebar:
+    st.markdown("<div class='brand'>Job Scout<small>חיפוש עבודה · ישראל</small></div>", unsafe_allow_html=True)
+    goal = int(secret("DAILY_GOAL", 50))
+    sent_n = sent_today(state)
+    st.progress(min(1.0, sent_n / max(1, goal)), text=f"נשלחו היום **{sent_n}** / {goal}")
+    open_n = sum(1 for j in state["jobs"].values() if j["key"] not in state["archive"] and j["key"] not in state.get("queue", {}))
+    cap = int(secret("MAX_SEARCHES_PER_DAY", 30))
+    usd, cap_usd = apify_usage()
+    st.markdown(f"<div class='side-kpi'><span>משרות פתוחות</span><b>{open_n}</b></div>"
+                f"<div class='side-kpi'><span>חיפושים היום</span><b>{runs_today(state)}/{cap}</b></div>"
+                + (f"<div class='side-kpi'><span>Apify החודש</span><b>${usd:.2f} מתוך ${cap_usd:.0f}</b></div>" if usd is not None else ""),
+                unsafe_allow_html=True)
+    _b, _info = active_batch()
+    if _info and not _info["done"]:
+        st.fragment(run_every=4)(progress_live)(compact=True)
+    st.divider()
+    if st.button("יציאה", width="stretch"):
+        st.session_state.clear()
+        st.rerun()
+nav.run()
