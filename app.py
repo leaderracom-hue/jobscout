@@ -455,30 +455,47 @@ def age_h(j):
     return (dt.datetime.now(dt.timezone.utc) - t).total_seconds() / 3600
 
 
-def mark_many(keys, status):
-    """Sent / removed for one or many jobs in ONE save; remembers the last action so it can be undone."""
+def mark_many(keys, status, block=False):
+    """Sent / removed for one or many jobs in ONE save; remembers the last action so it can be undone.
+    Assaf 19 Nov: block=True also blocks the jobs' companies (status None = block only, the jobs stay open but hidden)."""
     keys = list(keys)
+    newly, noname = [], []
 
     def m(s):
         now = dt.datetime.now(dt.timezone.utc).isoformat()
+        cfg = settings_of(s)
+        newly.clear()
+        noname.clear()
         for key in keys:
             j = s["jobs"].get(key, {})
-            j.pop("desc", None)
-            s["archive"][key] = {"status": status, "at": now, "title": j.get("title"), "company": j.get("company"),
-                                 "urls": list((j.get("links") or {"x": j.get("url")}).values())}
-    update_state(m, f"{status}: {keys[0]}" if len(keys) == 1 else f"{status} x{len(keys)}")
-    st.session_state.undo = {"keys": keys, "status": status}
+            if block:
+                ck = company_key(j.get("company"))
+                if not ck:
+                    noname.append(key)
+                elif ck not in cfg["blocked_companies"]:
+                    cfg["blocked_companies"].append(ck)
+                    newly.append(ck)
+            if status:
+                j.pop("desc", None)
+                s["archive"][key] = {"status": status, "at": now, "title": j.get("title"), "company": j.get("company"),
+                                     "urls": list((j.get("links") or {"x": j.get("url")}).values())}
+    what = (status or "") + ("+block" if block else "")
+    update_state(m, f"{what}: {keys[0]}" if len(keys) == 1 else f"{what} x{len(keys)}")
+    st.session_state.undo = {"keys": keys if status else [], "status": status, "blocked": list(newly), "noname": len(noname)}
     for k in keys:
         st.session_state.pop(f"sel-{k}", None)
 
 
-def restore_many(keys):
-    keys = list(keys)
+def restore_many(keys, unblock=()):
+    keys, unblock = list(keys), list(unblock)
 
     def m(s):
         for key in keys:
             s["archive"].pop(key, None)
-    update_state(m, f"restore x{len(keys)}")
+        if unblock:
+            cfg = settings_of(s)
+            cfg["blocked_companies"] = [c for c in cfg["blocked_companies"] if c not in unblock]
+    update_state(m, f"restore x{len(keys)}" + (f" unblock x{len(unblock)}" if unblock else ""))
 
 
 def mark(key, status):  # kept for older callers
@@ -548,11 +565,19 @@ def undo_bar():
     u = st.session_state.get("undo")
     if not u:
         return
-    word = "סומנו כנשלחו" if u["status"] == "sent" else "הוסרו"
+    parts = []
+    if u.get("status"):
+        parts.append(f"{len(u['keys'])} משרות " + ("סומנו כנשלחו" if u["status"] == "sent" else "הוסרו"))
+    if u.get("blocked"):
+        parts.append(f"{len(u['blocked'])} חברות נחסמו")
+    if u.get("noname"):
+        parts.append(f"{u['noname']} משרות חסויות, בלי שם חברה, לא נחסמו")
+    if not parts:
+        parts.append("החברה כבר הייתה חסומה")
     a, b, c = st.columns([5, 1, 1], vertical_alignment="center")
-    a.success(f"{len(u['keys'])} משרות {word}")
+    a.success(" · ".join(parts))
     if b.button("↩ בטל", key="undo_btn", width="stretch"):
-        restore_many(u["keys"])
+        restore_many(u["keys"], u.get("blocked") or [])
         st.session_state.pop("undo", None)
         st.rerun()
     if c.button("סגור", key="undo_close", width="stretch"):
@@ -661,7 +686,22 @@ def card(j, new=False):
             + f'<div class="tags">{tags}</div>'
             + (f'<details class="why"><summary>למה זה מתאים</summary>{why}{more}</details>' if why else ""),
             unsafe_allow_html=True)
-        a1, a2, a3, a4, a5 = c2.columns([2, 1.2, 1.3, 1.2, 1.6])
+        a1, a2, a3, a4, a5, a6 = c2.columns([2, 1.1, 1.2, 1.1, 1.6, 0.9])
+        co = j.get("company") or ""
+        with a6.popover("🚫", help="חסימת החברה", width="stretch"):
+            if not company_key(co):
+                st.caption("אי אפשר לחסום משרה בלי שם חברה")
+            else:
+                st.markdown(f"**{co}**")
+                if st.button("🚫 חסום חברה", key=f"blk-{k}", width="stretch", help="המשרות שלה ייעלמו ולא יחזרו בחיפושים"):
+                    mark_many([k], None, block=True)
+                    st.rerun()
+                if st.button("✓ שלחתי + חסום חברה", key=f"sblk-{k}", width="stretch"):
+                    mark_many([k], "sent", block=True)
+                    st.rerun()
+                if st.button("✕ הסר + חסום חברה", key=f"xblk-{k}", width="stretch"):
+                    mark_many([k], "removed", block=True)
+                    st.rerun()
         a1.link_button("פתח והגש ↗", j.get("url") or "#", type="primary", width="stretch")
         if cv and st.session_state.get("cv_open") == k:
             try:
@@ -683,6 +723,21 @@ def card(j, new=False):
             st.rerun()
     if st.session_state.get("ask_open") == k:
         ask_panel(j)
+
+
+def block_actions(sel, where):
+    """Assaf 19 Nov: block the companies of the selected jobs, alone or together with sent / remove."""
+    c1, c2, c3, _ = st.columns([2, 2, 2, 3], vertical_alignment="center")
+    if c1.button(f"✓ נשלחו + 🚫 חסום ({len(sel)})", key=f"sblk_{where}", disabled=not sel, width="stretch"):
+        mark_many(sel, "sent", block=True)
+        st.rerun()
+    if c2.button(f"✕ הסר + 🚫 חסום ({len(sel)})", key=f"xblk_{where}", disabled=not sel, width="stretch"):
+        mark_many(sel, "removed", block=True)
+        st.rerun()
+    if c3.button(f"🚫 חסום חברות ({len(sel)})", key=f"blk_{where}", disabled=not sel, width="stretch",
+                 help="המשרות של החברות האלה ייעלמו מהתיבה ויוסרו בחיפושים הבאים"):
+        mark_many(sel, None, block=True)
+        st.rerun()
 
 
 def job_table(rows, key, height=None):
@@ -803,6 +858,7 @@ def inbox_body():
         if t2.button(f"✕ הסר ({len(sel)})", key="tbl_rm", disabled=not sel, width="stretch"):
             mark_many(sel, "removed")
             st.rerun()
+        block_actions(sel, "table")
         return
 
     n_all = len(shown)
@@ -843,6 +899,7 @@ def inbox_body():
     elif b3.button(f"הסר הכל בעמוד ({len(page_jobs)})", key="rm_all", width="stretch"):
         st.session_state.rm_all_ask = True
         st.rerun()
+    block_actions(sel, "cards")
     for j in page_jobs:
         card(j, new=is_new(j))
     if pages > 1:
