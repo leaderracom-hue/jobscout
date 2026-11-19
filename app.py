@@ -28,7 +28,7 @@ import streamlit as st
 APP = Path(__file__).parent
 IL = ZoneInfo("Asia/Jerusalem")
 GH = "https://api.github.com"
-# Assaf 19 Nov: dropped ai trainer, freelancer (gtm ai restored: GTM roles always stay) (no job ever scored 45+); integration / product erp were already gone
+# Assaf 19 Nov: dropped ai trainer, freelancer (gtm ai restored: GTM roles always stay) (no job ever scored 40+); integration / product erp were already gone
 KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm product", "gtm ai", "gtm engineer", "ai builder", "ai automation",
             "automation", "crm integration", "crm automation", "מנהל מוצר", "מנהל מוצר אוטומציות", "אוטומציות שיווק", "מנהל פרויקט אוטומציות",
             # Assaf 18 Nov: 12 more
@@ -42,7 +42,7 @@ LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automati
          "crm product": "CRM / Salesforce Product", "lifecycle marketing": "Lifecycle / Retention", "טרנספורמציה דיגיטלית": "טרנספורמציה דיגיטלית",
          "מנהל חדשנות": "מנהל חדשנות", "מנהל מערכות שיווק": "מנהל מערכות שיווק"}
 WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע"}
-MIN_FIT = 45  # Assaf 11 Nov: a score under 45 goes straight to the archive ("auto")
+MIN_FIT = 40  # Assaf 19 Nov: threshold lowered 45 -> 40; a score under it goes straight to the archive ("auto") and is never shown
 HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
 BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "jobmaster": "JobMaster", "careers": "דף קריירה"}
 
@@ -234,7 +234,7 @@ GTM_RX = re.compile(r"\bgtm\b", re.I)
 
 def is_gtm(j):
     """Assaf 19 Nov: a job with GTM in the title or the post text skips the title filters and the exclude words.
-    The score rule still wins: under 45 is never shown (Assaf, later the same day)."""
+    The score rule still wins: under MIN_FIT (40) is never shown (Assaf, later the same day)."""
     return bool(j.get("gtm") or GTM_RX.search(str(j.get("title") or "")) or GTM_RX.search(str(j.get("desc") or "")))
 
 
@@ -380,7 +380,7 @@ def search_core(kw, hours, batch, report):
                 st_["jobs"][k]["desc"] = str(j["desc"])[:3000]
             if is_gtm(j):
                 st_["jobs"][k]["gtm"] = True
-            if fit is not None and fit < MIN_FIT:  # Assaf 19 Nov rule of thumb: under 45 is never shown, whatever else (GTM included)
+            if fit is not None and fit < MIN_FIT:  # Assaf 19 Nov rule of thumb: under MIN_FIT is never shown, whatever else (GTM included)
                 st_["archive"][k] = {"status": "auto", "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
                                      "urls": list((j.get("links") or {"x": j.get("url")}).values())}
         for k, j, why in blocked:
@@ -791,7 +791,7 @@ def inbox_body():
     queue = s.get("queue", {})
     opn = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
     hidden = [j for j in opn if excluded(s, j)]  # the user's exclude words / blocked companies
-    opn = [j for j in opn if not excluded(s, j) and not (j.get("fit") is not None and j["fit"] < MIN_FIT)]  # under 45: never shown
+    opn = [j for j in opn if not excluded(s, j) and not (j.get("fit") is not None and j["fit"] < MIN_FIT)]  # under MIN_FIT: never shown
     cfg = settings_of(s)
     CTX["followed"] = set(cfg["followed_companies"])
     CTX["sent_by_co"] = {}
@@ -1221,11 +1221,11 @@ def stats_tables(s):
         if not runs and not js:
             continue
         scored = [j for j in js if j.get("fit") is not None]
-        g45 = sum(1 for j in scored if j["fit"] >= 45)
+        g45 = sum(1 for j in scored if j["fit"] >= MIN_FIT)
         sent = sum(1 for j in js if status(j) == "sent")
-        kw_rows.append({"מילה": lbl(k), "חיפושים": len(runs), "משרות": len(js), "ציון 45+": g45, "% 45+": _pct(g45, len(scored)),
+        kw_rows.append({"מילה": lbl(k), "חיפושים": len(runs), "משרות": len(js), "ציון 40+": g45, "% 40+": _pct(g45, len(scored)),
                         "ציון 70+": sum(1 for j in scored if j["fit"] >= 70), "% 70+": _pct(sum(1 for j in scored if j["fit"] >= 70), len(scored)),
-                        "נשלחו": sent, "% נשלחו מ-45+": _pct(sent, g45), "הוסרו": sum(1 for j in js if status(j) == "removed"),
+                        "נשלחו": sent, "% נשלחו מ-40+": _pct(sent, g45), "הוסרו": sum(1 for j in js if status(j) == "removed"),
                         "% מסך הנשלחות": 0})
     total_sent = sum(1 for a in arc.values() if a.get("status") == "sent") or 1
     for r in kw_rows:
@@ -1233,15 +1233,15 @@ def stats_tables(s):
     src = {}
     for j in jobs.values():
         for b in j.get("boards", []):
-            o = src.setdefault(b, {"מקור": BOARD.get(b, b), "משרות": 0, "_scored": 0, "ציון 45+": 0, "נשלחו": 0})
+            o = src.setdefault(b, {"מקור": BOARD.get(b, b), "משרות": 0, "_scored": 0, "ציון 40+": 0, "נשלחו": 0})
             o["משרות"] += 1
             o["_scored"] += j.get("fit") is not None
-            o["ציון 45+"] += (j.get("fit") or 0) >= 45
+            o["ציון 40+"] += (j.get("fit") or 0) >= MIN_FIT
             o["נשלחו"] += status(j) == "sent"
     src_rows = []
     for o in sorted(src.values(), key=lambda o: -o["נשלחו"]):
-        src_rows.append({"מקור": o["מקור"], "משרות": o["משרות"], "ציון 45+": o["ציון 45+"], "% 45+": _pct(o["ציון 45+"], o["_scored"]),
-                         "נשלחו": o["נשלחו"], "% נשלחו מ-45+": _pct(o["נשלחו"], o["ציון 45+"]), "% מסך הנשלחות": _pct(o["נשלחו"], total_sent)})
+        src_rows.append({"מקור": o["מקור"], "משרות": o["משרות"], "ציון 40+": o["ציון 40+"], "% 40+": _pct(o["ציון 40+"], o["_scored"]),
+                         "נשלחו": o["נשלחו"], "% נשלחו מ-40+": _pct(o["נשלחו"], o["ציון 40+"]), "% מסך הנשלחות": _pct(o["נשלחו"], total_sent)})
     return kw_rows, src_rows
 
 
@@ -1262,7 +1262,7 @@ def data_context(s):
             (a.get("status") or "open") + (f":{a['reason']}" if a.get("reason") else ""), ",".join(j.get("kws", [])),
             ",".join(j.get("boards", [])), str(j.get("posted") or "")[:10], str(j.get("foundAt") or "")[:10], str(a.get("at") or "")[:10],
             j.get("lang"), j.get("verdict")]))
-    runs = ["date|keyword|window_h|found|new|auto_removed_under_45"] + [
+    runs = ["date|keyword|window_h|found|new|auto_removed_under_threshold"] + [
         f"{str(r['at'])[:16]}|{r['kw']}|{r.get('hours') or 168}|{r.get('found', 0)}|{r.get('new', 0)}|{r.get('autoRemoved', 0)}" for r in s.get("runs", [])]
     cfg = settings_of(s)
     return "\n".join([
@@ -1343,13 +1343,13 @@ def compute_insights(s):
     runs = s.get("runs", [])
     usd = sum((r.get("claudeUsd") or 0) for r in runs) + 0.16 * len(runs)
     kw_rows, src_rows = stats_tables(s)
-    strong = sorted([r for r in kw_rows if r["נשלחו"] >= 3], key=lambda r: (-r["% 45+"], -r["נשלחו"]))[:3]
-    weak = sorted([r for r in kw_rows if r["משרות"] >= 8 and r["% 45+"] < 35], key=lambda r: r["% 45+"])[:3]
-    dead = [r["מילה"] for r in kw_rows if r["חיפושים"] >= 1 and r["ציון 45+"] == 0]
+    strong = sorted([r for r in kw_rows if r["נשלחו"] >= 3], key=lambda r: (-r["% 40+"], -r["נשלחו"]))[:3]
+    weak = sorted([r for r in kw_rows if r["משרות"] >= 8 and r["% 40+"] < 35], key=lambda r: r["% 40+"])[:3]
+    dead = [r["מילה"] for r in kw_rows if r["חיפושים"] >= 1 and r["ציון 40+"] == 0]
     best_src = max(src_rows, key=lambda r: r["% מסך הנשלחות"]) if src_rows else None
-    eff_src = max([r for r in src_rows if r["ציון 45+"] >= 5] or src_rows or [{}], key=lambda r: r.get("% 45+", 0)) if src_rows else None
+    eff_src = max([r for r in src_rows if r["ציון 40+"] >= 5] or src_rows or [{}], key=lambda r: r.get("% 40+", 0)) if src_rows else None
     bands = []
-    for lo, hi in [(45, 55), (55, 65), (65, 75), (75, 101)]:
+    for lo, hi in [(MIN_FIT, 55), (55, 65), (65, 75), (75, 101)]:
         b = [j for j in scored if lo <= j["fit"] < hi and status(j) in ("sent", "removed")]
         bands.append((f"{lo}–{min(hi, 100) - (0 if hi > 100 else 1)}", len(b), _pct(sum(1 for j in b if status(j) == "sent"), len(b))))
     eng = re.compile(r"\b(engineer|developer|software|scientist)\b", re.I)
@@ -1386,9 +1386,9 @@ def insights_block(s):
     c3, c4 = st.columns(2)
     with c3.container(border=True):
         st.markdown("**✅ מילות החיפוש הכי משתלמות**")
-        st.markdown("\n".join(f"- **{r['מילה']}**: {r['% 45+']}% מהמשרות עם ציון טוב, {r['נשלחו']} הגשות" for r in i["strong"]) or "אין מספיק נתונים עדיין.")
+        st.markdown("\n".join(f"- **{r['מילה']}**: {r['% 40+']}% מהמשרות עם ציון טוב, {r['נשלחו']} הגשות" for r in i["strong"]) or "אין מספיק נתונים עדיין.")
         if i["weak"]:
-            st.markdown("**⚠️ חלשות:** " + " · ".join(f"{r['מילה']} ({r['% 45+']}% טובות)" for r in i["weak"]))
+            st.markdown("**⚠️ חלשות:** " + " · ".join(f"{r['מילה']} ({r['% 40+']}% טובות)" for r in i["weak"]))
         if i["dead"]:
             st.markdown("**❌ לא הביאו אף משרה טובה:** " + ", ".join(i["dead"]))
     with c4.container(border=True):
@@ -1396,13 +1396,13 @@ def insights_block(s):
         if i["best_src"]:
             st.markdown(f"- הכי הרבה הגשות: **{i['best_src']['מקור']}** ({i['best_src']['% מסך הנשלחות']}% מכל ההגשות)")
         if i["eff_src"]:
-            st.markdown(f"- הכי מדויק: **{i['eff_src'].get('מקור')}** ({i['eff_src'].get('% 45+')}% מהמשרות שלו עם ציון טוב)")
+            st.markdown(f"- הכי מדויק: **{i['eff_src'].get('מקור')}** ({i['eff_src'].get('% 40+')}% מהמשרות שלו עם ציון טוב)")
         st.markdown("**🎚️ אחוז הגשה לפי ציון** (מתוך משרות שסימנת)")
         st.markdown(" · ".join(f"{b}: **{p}%** ({n})" for b, n, p in i["bands"]))
         top = i["bands"][-1][2]
         low_b = i["bands"][0][2]
         if top and low_b < top / 2:
-            st.caption(f"אתה שולח הרבה יותר למשרות 75+ ({top}%) מאשר ל-45–54 ({low_b}%). העלאת הסף ל-55 תוריד רעש בלי לאבד הרבה הגשות.")
+            st.caption(f"אתה שולח הרבה יותר למשרות 75+ ({top}%) מאשר ל-{MIN_FIT}–54 ({low_b}%).")
 
 
 def research_block(s):
@@ -1469,13 +1469,13 @@ def page_stats():
                 per_day[d] += 1
     goal = int(secret("DAILY_GOAL", 50))
     scored = [j for j in jobs.values() if j.get("fit") is not None]
-    g45 = sum(1 for j in scored if j["fit"] >= 45)
+    g45 = sum(1 for j in scored if j["fit"] >= MIN_FIT)
     sent_all = sum(1 for a in arc.values() if a.get("status") == "sent")
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("נשלחו היום", per_day[today], f"{_pct(per_day[today], goal)}% מהיעד ({goal})", delta_color="off")
     m2.metric("נשלחו ב-7 ימים", sum(v for d, v in per_day.items() if d > today - dt.timedelta(days=7)))
-    m3.metric("ציון 45+ מכל המשרות", f"{_pct(g45, len(scored))}%", f"{g45} מתוך {len(scored)}", delta_color="off")
-    m4.metric("נשלחו מתוך 45+", f"{_pct(sent_all, g45)}%", f"{sent_all} נשלחו", delta_color="off")
+    m3.metric("ציון 40+ מכל המשרות", f"{_pct(g45, len(scored))}%", f"{g45} מתוך {len(scored)}", delta_color="off")
+    m4.metric("נשלחו מתוך 40+", f"{_pct(sent_all, g45)}%", f"{sent_all} נשלחו", delta_color="off")
     usd, cap_usd = apify_usage()
     m5.metric("Apify החודש", f"${usd:.2f}" if usd is not None else "?", f"{_pct(usd or 0, cap_usd or 0)}% מתוך ${cap_usd:.0f}" if cap_usd else None, delta_color="off")
 
@@ -1488,12 +1488,12 @@ def page_stats():
     st.bar_chart(pd.DataFrame({"נשלחו": list(per_day.values())}, index=[d.strftime("%d.%m") for d in days]), height=220)
     kw_rows, src_rows = stats_tables(s)
     st.markdown("##### לפי מילה")
-    st.caption("% 45+ = מתוך המשרות שקיבלו ציון · % נשלחו מ-45+ = כמה מהמשרות הטובות שלחת בפועל · % מסך הנשלחות = החלק של המילה מכל ההגשות")
+    st.caption("% 40+ = מתוך המשרות שקיבלו ציון · % נשלחו מ-40+ = כמה מהמשרות הטובות שלחת בפועל · % מסך הנשלחות = החלק של המילה מכל ההגשות")
     st.dataframe(pd.DataFrame(kw_rows).sort_values("נשלחו", ascending=False), hide_index=True, width="stretch",
-                 column_config={"% 45+": PCT("% 45+"), "% 70+": PCT("% 70+"), "% נשלחו מ-45+": PCT("% נשלחו מ-45+"), "% מסך הנשלחות": PCT("% מסך הנשלחות")})
+                 column_config={"% 40+": PCT("% 40+"), "% 70+": PCT("% 70+"), "% נשלחו מ-40+": PCT("% נשלחו מ-40+"), "% מסך הנשלחות": PCT("% מסך הנשלחות")})
     st.markdown("##### לפי מקור")
     st.dataframe(pd.DataFrame(src_rows), hide_index=True, width="stretch",
-                 column_config={"% 45+": PCT("% 45+"), "% נשלחו מ-45+": PCT("% נשלחו מ-45+"), "% מסך הנשלחות": PCT("% מסך הנשלחות")})
+                 column_config={"% 40+": PCT("% 40+"), "% נשלחו מ-40+": PCT("% נשלחו מ-40+"), "% מסך הנשלחות": PCT("% מסך הנשלחות")})
     st.caption("עלות משוערת: כ-$0.25 לכל מילת חיפוש (Apify כ-$0.16 + Claude כ-$0.09).")
 
 
