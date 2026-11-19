@@ -28,8 +28,9 @@ import streamlit as st
 APP = Path(__file__).parent
 IL = ZoneInfo("Asia/Jerusalem")
 GH = "https://api.github.com"
-KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm product", "gtm ai", "gtm engineer", "ai builder", "ai automation",
-            "automation", "crm integration", "crm automation", "ai trainer", "freelancer", "מנהל מוצר", "מנהל מוצר אוטומציות", "אוטומציות שיווק", "מנהל פרויקט אוטומציות",
+# Assaf 19 Nov: dropped gtm ai, ai trainer, freelancer (no job ever scored 45+); integration / product erp were already gone
+KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm product", "gtm engineer", "ai builder", "ai automation",
+            "automation", "crm integration", "crm automation", "מנהל מוצר", "מנהל מוצר אוטומציות", "אוטומציות שיווק", "מנהל פרויקט אוטומציות",
             # Assaf 18 Nov: 12 more
             "מיישם פתרונות ai", "ai implementation", "ai solutions", "ai product owner", "technical product manager", "data product manager",
             "product operations", "crm product", "lifecycle marketing", "טרנספורמציה דיגיטלית", "מנהל חדשנות", "מנהל מערכות שיווק"]
@@ -209,7 +210,7 @@ def key_of(j):
 def settings_of(s):
     """Assaf 19 Nov: user rules kept in state.json → exclude words (title), blocked + followed companies."""
     st_ = s.setdefault("settings", {})
-    for k in ("exclude_words", "blocked_companies", "followed_companies"):
+    for k in ("exclude_words", "keep_words", "blocked_companies", "followed_companies"):
         st_.setdefault(k, [])
     return st_
 
@@ -234,6 +235,8 @@ def excluded(s, j):
     ck = company_key(j.get("company"))
     if ck and ck in cfg["blocked_companies"]:
         return f"חברה חסומה: {j.get('company')}"
+    if any(_word_hit(w, j.get("title")) for w in cfg["keep_words"]):  # "never hide" words win over exclude words (e.g. GTM AI Engineer)
+        return None
     for w in cfg["exclude_words"]:
         if _word_hit(w, j.get("title")):
             return f"מילה לסינון: {w}"
@@ -415,9 +418,9 @@ def start_batch(kws, hours):
 GROUPS = {
     "מוצר": ["מנהל מוצר", "product ai", "ai product owner", "technical product manager", "data product manager", "product operations", "product marketing"],
     "אוטומציה ושיווק": ["מנהל מוצר אוטומציות", "marketing automation", "אוטומציות שיווק", "מנהל פרויקט אוטומציות", "automation", "lifecycle marketing", "מנהל מערכות שיווק"],
-    "AI": ["ai builder", "ai automation", "מיישם פתרונות ai", "ai implementation", "ai solutions", "ai trainer"],
+    "AI": ["ai builder", "ai automation", "מיישם פתרונות ai", "ai implementation", "ai solutions"],
     "CRM": ["crm product", "crm integration", "crm automation"],
-    "GTM ועוד": ["gtm product", "gtm ai", "gtm engineer", "טרנספורמציה דיגיטלית", "מנהל חדשנות", "freelancer"],
+    "GTM ועוד": ["gtm product", "gtm engineer", "טרנספורמציה דיגיטלית", "מנהל חדשנות"],
 }
 TOP10 = ["מנהל מוצר אוטומציות", "marketing automation", "ai builder", "אוטומציות שיווק", "gtm product", "product ai", "מנהל מוצר",
          "gtm engineer", "product marketing", "ai automation"]
@@ -1063,6 +1066,21 @@ def page_filters():
             st.rerun()
     else:
         st.info("אין עדיין מילים לסינון.")
+
+    st.markdown("##### מילים שתמיד נשארות")
+    st.caption("משרה שהכותרת שלה מכילה אחת מהמילים האלה לא תוסתר, גם אם יש בה מילה לסינון. למשל GTM שומר על GTM AI Engineer.")
+    with st.form("add_keep", clear_on_submit=True, border=True):
+        a, b = st.columns([5, 1], vertical_alignment="bottom")
+        newk = a.text_input("הוסף מילים (מופרדות בפסיק)", placeholder="למשל: GTM, Solutions")
+        if b.form_submit_button("הוסף", width="stretch") and newk.strip():
+            words = [w.strip() for w in newk.split(",") if w.strip()]
+            save_settings(lambda c: c.__setitem__("keep_words", list(dict.fromkeys(c["keep_words"] + words))), f"keep +{len(words)}")
+            st.rerun()
+    if cfg["keep_words"]:
+        dropk = st.pills("לחץ על מילה כדי לסמן אותה להסרה", cfg["keep_words"], selection_mode="multi", key="drop_keep")
+        if st.button(f"✕ הסר מהרשימה ({len(dropk or [])})", disabled=not dropk, key="rm_keep"):
+            save_settings(lambda c: c.__setitem__("keep_words", [w for w in c["keep_words"] if w not in dropk]), "keep -words")
+            st.rerun()
 
     st.markdown("##### חברות חסומות")
     blocked = cfg["blocked_companies"]
