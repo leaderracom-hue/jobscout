@@ -1405,27 +1405,34 @@ def insights_block(s):
             st.caption(f"אתה שולח הרבה יותר למשרות 75+ ({top}%) מאשר ל-{MIN_FIT}–54 ({low_b}%).")
 
 
-def research_block(s):
-    """Claude research report (Opus 5.5), saved in state.json so it stays until refreshed. ~$0.10–0.20 a report."""
-    rep = s.get("research") or {}
-    st.markdown("##### 🔬 מחקר מעמיק")
-    a, b = st.columns([5, 1.4], vertical_alignment="center")
-    a.caption((("עודכן " + to_il(rep["at"]).strftime("%d.%m %H:%M") + " · ") if rep.get("at") else "")
-              + "Claude קורא את כל המשרות, הציונים, החיפושים והסטטוסים וכותב ניתוח, מסקנות והמלצות. כ-$0.10–0.20 לדוח.")
-    if b.button("🔬 צור דוח חדש" if rep else "🔬 צור דוח", key="make_research", type="primary", width="stretch"):
-        with st.spinner("Claude כותב את הדוח… (כדקה)"):
-            try:
-                text = run_research(s)
-            except Exception as e:
-                st.info(f"הדוח נכשל: {str(e)[:200]}", icon="⚠️")
-                return
-        update_state(lambda st_: st_.__setitem__("research", {"at": dt.datetime.now(dt.timezone.utc).isoformat(), "text": text}), "research report")
-        st.rerun()
-    if rep.get("text"):
-        with st.container(border=True):
-            st.markdown(rep["text"])
-    else:
-        st.info("עוד אין דוח. לחץ \"צור דוח\".")
+RESEARCH_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["headline", "kpis", "works", "not_working", "patterns", "keyword_actions", "recommendations", "open_questions"],
+    "properties": {
+        "headline": {"type": "string"},
+        "kpis": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["label", "value", "note", "tone"],
+                 "properties": {"label": {"type": "string"}, "value": {"type": "string"}, "note": {"type": "string"},
+                                "tone": {"type": "string", "enum": ["good", "warn", "info"]}}}},
+        "works": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["title", "detail", "metric"],
+                  "properties": {"title": {"type": "string"}, "detail": {"type": "string"}, "metric": {"type": "string"}}}},
+        "not_working": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["title", "detail", "metric"],
+                        "properties": {"title": {"type": "string"}, "detail": {"type": "string"}, "metric": {"type": "string"}}}},
+        "patterns": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["title", "detail"],
+                     "properties": {"title": {"type": "string"}, "detail": {"type": "string"}}}},
+        "keyword_actions": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["keyword", "action", "reason"],
+                            "properties": {"keyword": {"type": "string"}, "action": {"type": "string", "enum": ["boost", "keep", "watch", "drop"]},
+                                           "reason": {"type": "string"}}}},
+        "recommendations": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["action", "why", "impact", "effort"],
+                            "properties": {"action": {"type": "string"}, "why": {"type": "string"},
+                                           "impact": {"type": "string", "enum": ["high", "medium", "low"]},
+                                           "effort": {"type": "string", "enum": ["low", "medium", "high"]}}}},
+        "open_questions": {"type": "array", "items": {"type": "string"}},
+    },
+}
+TONE = {"good": ("#e6f4ec", "#16794a"), "warn": ("#fdf3e1", "#8a5a00"), "info": ("#eaf0fc", "#2a55c9")}
+ACTION = {"boost": ("⬆ להגביר", "#e6f4ec", "#16794a"), "keep": ("✓ להשאיר", "#eaf0fc", "#2a55c9"),
+          "watch": ("👁 לעקוב", "#fdf3e1", "#8a5a00"), "drop": ("⬇ להוריד", "#eef0f3", "#5b6474")}
+LEVEL = {"high": "גבוהה", "medium": "בינונית", "low": "נמוכה"}
 
 
 def run_research(s):
@@ -1433,27 +1440,134 @@ def run_research(s):
     client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"))
     i = compute_insights(s)
     prompt = (
-        "Write a research report for Assaf about his job search, from the data. Structure (Hebrew headings, markdown):\n"
-        "## תמונת מצב (3-4 bullets with the key numbers)\n## מה עובד (keywords, sources, job types that lead to applications - with numbers)\n"
-        "## מה לא עובד ולמה (low-score patterns, wasted keywords/sources, recurring gaps)\n"
-        "## דפוסים בהגשות שלך (what he sends vs removes: titles, companies, score bands, Hebrew vs English posts)\n"
-        "## המלצות (5-7 concrete actions, each with the expected effect and the number behind it: keywords to add/drop, exclude words, sources, threshold, daily routine to reach the goal)\n"
-        "## שאלות פתוחות (2-3 things the data cannot answer yet)\n"
-        f"Daily goal: {i['goal']} applications. Be specific, use the real numbers, no generic advice, max ~600 words.")
+        "Write a research report for Assaf about his job search, from the data. Fill the JSON fields:\n"
+        "- headline: one sentence, the main conclusion.\n- kpis: 4-6 key numbers (value short, e.g. '50%', '36.5/day'; note = what it means; tone good/warn/info).\n"
+        "- works: 3-5 things that work (keywords, sources, job types) with the number behind each in metric.\n"
+        "- not_working: 3-5 things that don't work and why, each with its number.\n"
+        "- patterns: 3-5 patterns in what he sends vs removes (titles, companies, score bands, Hebrew vs English, recruiters).\n"
+        "- keyword_actions: one entry per search keyword that has data: boost / keep / watch / drop, with a short reason and number.\n"
+        "- recommendations: 5-7 concrete actions, each with why (the number), impact and effort.\n"
+        "- open_questions: 2-3 things the data cannot answer.\n"
+        f"Daily goal: {i['goal']} applications. Score threshold: {MIN_FIT}. Be specific, use the real numbers, no generic advice. "
+        "All text in simple, natural Hebrew, male second person; keep keyword, company and source names as in the data.")
     system = [{"type": "text", "text": (
         "You are the analyst inside Job Scout, Assaf's job-search dashboard (Israel only; he applies manually). Use only the data below; "
-        "compute exactly and say when the data cannot answer. Simple, natural Hebrew, male second person; keep keyword, tool, company and source "
-        "names as in the data. Jobs with GTM in the title or post always stay in his inbox by his rule.\n\nDATA:\n" + data_context(s)),
-        "cache_control": {"type": "ephemeral"}}]
+        "compute exactly and say when the data cannot answer. Jobs with GTM in the title or post skip his title filters by his rule.\n\nDATA:\n"
+        + data_context(s)), "cache_control": {"type": "ephemeral"}}]
     with client.beta.messages.stream(model="claude-opus-5-5", max_tokens=64000, system=system, messages=[{"role": "user", "content": prompt}],
-                                     output_config={"effort": "high"}, betas=["server-side-fallback-2026-07-01"], fallbacks="default") as stream:
+                                     output_config={"effort": "high", "format": {"type": "json_schema", "schema": RESEARCH_SCHEMA}},
+                                     betas=["server-side-fallback-2026-07-01"], fallbacks="default") as stream:
         r = stream.get_final_message()
     if r.stop_reason == "refusal":
         raise RuntimeError("Claude declined to write the report")
-    text = "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip()
+    text = next((b.text for b in r.content if getattr(b, "type", "") == "text"), "")
     if not text:
-        raise RuntimeError(f"empty report (stop_reason={r.stop_reason}, blocks={[getattr(b, 'type', '?') for b in r.content]})")
-    return text
+        raise RuntimeError(f"empty report (stop_reason={r.stop_reason})")
+    return json.loads(text)
+
+
+def _card(bg, fg, title, body, top=""):
+    return (f"<div style='background:{bg};border-radius:12px;padding:10px 12px;height:100%'>"
+            + (f"<div style='font-size:.75rem;color:{fg};opacity:.85'>{top}</div>" if top else "")
+            + f"<div style='font-weight:700;color:{fg};font-size:1.05rem'>{title}</div>"
+            f"<div style='font-size:.85rem;color:#374151;margin-top:3px'>{body}</div></div>")
+
+
+def research_charts(s):
+    """Charts drawn from the data itself (exact numbers), placed next to the report sections."""
+    i = compute_insights(s)
+    kw_rows, src_rows = stats_tables(s)
+    funnel = pd.DataFrame({"שלב": ["1 נמצאו", "2 דורגו", f"3 ציון {MIN_FIT}+", "4 נשלחו"],
+                           "משרות": [i["found"], i["scored"], i["g45"], i["sent"]]}).set_index("שלב")
+    kw = pd.DataFrame([{"מילה": r["מילה"], "נשלחו": r["נשלחו"], f"% {MIN_FIT}+": r[f"% {MIN_FIT}+"]} for r in kw_rows if r["משרות"] >= 3])
+    src = pd.DataFrame([{"מקור": r["מקור"], "נשלחו": r["נשלחו"], f"% {MIN_FIT}+": r[f"% {MIN_FIT}+"]} for r in src_rows])
+    bands = pd.DataFrame([{"ציון": b, "% שנשלחו": p} for b, n, p in i["bands"]]).set_index("ציון")
+    return funnel, kw, src, bands
+
+
+def research_block(s):
+    """Claude research report, shown as cards + charts (Assaf 19 Nov). Saved in state.json until refreshed. ~$0.15 a report."""
+    rep = s.get("research") or {}
+    st.markdown("##### 🔬 מחקר מעמיק")
+    a, b = st.columns([5, 1.4], vertical_alignment="center")
+    a.caption((("עודכן " + to_il(rep["at"]).strftime("%d.%m %H:%M") + " · ") if rep.get("at") else "")
+              + "Claude קורא את כל המשרות, הציונים, החיפושים והסטטוסים. הגרפים מחושבים ישירות מהנתונים. כ-$0.15 לדוח.")
+    if b.button("🔬 צור דוח חדש" if rep else "🔬 צור דוח", key="make_research", type="primary", width="stretch"):
+        with st.spinner("Claude כותב את הדוח… (כדקה)"):
+            try:
+                data = run_research(s)
+            except Exception as e:
+                st.info(f"הדוח נכשל: {str(e)[:200]}", icon="⚠️")
+                return
+        update_state(lambda st_: st_.__setitem__("research", {"at": dt.datetime.now(dt.timezone.utc).isoformat(), "data": data}), "research report")
+        st.rerun()
+    d = rep.get("data")
+    if not d:
+        if rep.get("text"):  # older text-only report
+            with st.container(border=True):
+                st.markdown(rep["text"])
+            st.caption("זה דוח בפורמט הישן. \"צור דוח חדש\" יציג אותו עם גרפים.")
+        else:
+            st.info("עוד אין דוח. לחץ \"צור דוח\".")
+        return
+    funnel, kw, src, bands = research_charts(s)
+    st.markdown(f"<div style='background:#eaf0fc;border-right:5px solid #2a55c9;border-radius:10px;padding:12px 16px;font-size:1.05rem;"
+                f"font-weight:600;color:#1d3f8f;margin:6px 0 12px'>🧭 {d['headline']}</div>", unsafe_allow_html=True)
+    if d["kpis"]:
+        cols = st.columns(len(d["kpis"][:6]))
+        for c, k in zip(cols, d["kpis"][:6]):
+            bg, fg = TONE.get(k["tone"], TONE["info"])
+            c.markdown(_card(bg, fg, k["value"], k["note"], k["label"]), unsafe_allow_html=True)
+
+    st.markdown("###### המשפך")
+    st.bar_chart(funnel, horizontal=True, color="#2a55c9", height=190)
+
+    t1, t2, t3, t4 = st.tabs(["✅ מה עובד", "⚠️ מה לא עובד", "🔁 דפוסים", "🎯 המלצות"])
+    with t1:
+        c1, c2 = st.columns([1, 1.2])
+        for w in d["works"]:
+            c1.markdown(_card("#e6f4ec", "#16794a", w["title"], w["detail"], w["metric"]), unsafe_allow_html=True)
+            c1.write("")
+        if not kw.empty:
+            c2.caption("הגשות לפי מילת חיפוש")
+            c2.bar_chart(kw.set_index("מילה")[["נשלחו"]].sort_values("נשלחו"), horizontal=True, color="#16794a", height=360)
+        if not src.empty:
+            c2.caption("הגשות לפי מקור")
+            c2.bar_chart(src.set_index("מקור")[["נשלחו"]].sort_values("נשלחו"), horizontal=True, color="#2a55c9", height=200)
+    with t2:
+        c1, c2 = st.columns([1, 1.2])
+        for w in d["not_working"]:
+            c1.markdown(_card("#fdf3e1", "#8a5a00", w["title"], w["detail"], w["metric"]), unsafe_allow_html=True)
+            c1.write("")
+        if not kw.empty:
+            c2.caption(f"אחוז המשרות עם ציון {MIN_FIT}+ לפי מילה (נמוך = הרבה רעש)")
+            c2.bar_chart(kw.set_index("מילה")[[f"% {MIN_FIT}+"]].sort_values(f"% {MIN_FIT}+"), horizontal=True, color="#7a3fb0", height=360)
+    with t3:
+        c1, c2 = st.columns([1, 1.2])
+        for p in d["patterns"]:
+            c1.markdown(_card("#eaf0fc", "#2a55c9", p["title"], p["detail"]), unsafe_allow_html=True)
+            c1.write("")
+        c2.caption("כמה אחוז מהמשרות שסימנת שלחת, לפי ציון")
+        c2.bar_chart(bands, color="#2a55c9", height=260)
+    with t4:
+        order = {"high": 0, "medium": 1, "low": 2}
+        for r in sorted(d["recommendations"], key=lambda r: (order.get(r["impact"], 3), order.get(r["effort"], 3) * -1)):
+            bg, fg = TONE["good"] if r["impact"] == "high" else TONE["info"] if r["impact"] == "medium" else ("#eef0f3", "#5b6474")
+            st.markdown(_card(bg, fg, r["action"], r["why"],
+                              f"השפעה {LEVEL.get(r['impact'], r['impact'])} · מאמץ {LEVEL.get(r['effort'], r['effort'])}"), unsafe_allow_html=True)
+            st.write("")
+        if d["keyword_actions"]:
+            st.markdown("###### מה לעשות עם כל מילת חיפוש")
+            html = "".join(
+                f"<div style='display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #eef0f3'>"
+                f"<span style='min-width:92px;text-align:center;background:{ACTION[x['action']][1]};color:{ACTION[x['action']][2]};"
+                f"border-radius:999px;padding:1px 8px;font-size:.78rem'>{ACTION[x['action']][0]}</span>"
+                f"<b style='min-width:170px'>{x['keyword']}</b><span style='color:#4b5563;font-size:.86rem'>{x['reason']}</span></div>"
+                for x in sorted(d["keyword_actions"], key=lambda x: ["boost", "keep", "watch", "drop"].index(x["action"])))
+            st.markdown(html, unsafe_allow_html=True)
+    if d["open_questions"]:
+        with st.expander("❓ שאלות פתוחות שהנתונים לא עונים עליהן"):
+            st.markdown("\n".join(f"- {q}" for q in d["open_questions"]))
 
 
 def page_stats():
