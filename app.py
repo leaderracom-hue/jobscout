@@ -1502,11 +1502,11 @@ state, _ = load_state()
 PAGES = {
     "inbox": st.Page(page_inbox, title="משרות", icon=":material/inbox:", url_path="inbox", default=True),
     "search": st.Page(page_search, title="חיפוש חדש", icon=":material/search:", url_path="search"),
+    "stats": st.Page(page_stats, title="סטטיסטיקה", icon=":material/insights:", url_path="stats"),  # Assaf 19 Nov: above search history
     "history": st.Page(page_history, title="היסטוריית חיפושים", icon=":material/history:", url_path="history"),
     "companies": st.Page(page_companies, title="חברות", icon=":material/apartment:", url_path="companies"),
     "filters": st.Page(page_filters, title="סינון", icon=":material/block:", url_path="filters"),
     "archive": st.Page(page_archive, title="ארכיון", icon=":material/inventory_2:", url_path="archive"),
-    "stats": st.Page(page_stats, title="סטטיסטיקה", icon=":material/insights:", url_path="stats"),
 }
 nav = st.navigation(list(PAGES.values()), position="sidebar")
 with st.sidebar:
