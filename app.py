@@ -196,6 +196,20 @@ def cv_bytes(lang, name):
 
 # ---------------- search + scoring ----------------
 DICT = json.loads((APP / "engine/mini-agent/dictionary.json").read_text(encoding="utf-8"))
+
+
+def _list_rx(words):
+    parts = [rf"(?<![a-z0-9]){re.escape(w.lower())}(?![a-z0-9])" if all(ord(c) < 128 for c in w) else re.escape(w) for w in words if w]
+    return re.compile("|".join(parts), re.I) if parts else None
+
+
+CYBER_CO = _list_rx((DICT.get("_exclude") or {}).get("companies", []))
+CYBER_TI = _list_rx((DICT.get("_exclude") or {}).get("titles", []))
+
+
+def is_cyber(j):
+    """Safety net in the app (Assaf 19 Nov): the engine's cyber lists, checked again here. Cyber beats every other rule, GTM included."""
+    return bool((CYBER_CO and CYBER_CO.search(str(j.get("company") or "").lower())) or (CYBER_TI and CYBER_TI.search(str(j.get("title") or "").lower())))
 BRAIN = (APP / "engine/config/match-brain.md").read_text(encoding="utf-8")
 
 
@@ -241,6 +255,8 @@ def is_gtm(j):
 def excluded(s, j):
     """Why a job is filtered out by the user's own rules, or None."""
     cfg = settings_of(s)
+    if is_cyber(j):
+        return "סייבר"
     ck = company_key(j.get("company"))
     if ck and ck in cfg["blocked_companies"]:
         return f"חברה חסומה: {j.get('company')}"
@@ -386,7 +402,7 @@ def search_core(kw, hours, batch, report):
         for k, j, why in blocked:
             st_["jobs"][k] = {"key": k, "title": j["title"], "company": j.get("company"), "url": j.get("url"), "boards": j.get("boards", []),
                               "kws": [kw], "foundAt": now, "posted": j.get("posted")}
-            st_["archive"][k] = {"status": "auto", "reason": "excluded", "note": why, "at": now, "title": j["title"], "company": j.get("company"),
+            st_["archive"][k] = {"status": "auto", "reason": "cyber" if why == "סייבר" else "excluded", "note": why, "at": now, "title": j["title"], "company": j.get("company"),
                                  "urls": list((j.get("links") or {"x": j.get("url")}).values())}
         auto = len(blocked) + sum(1 for k, j in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
         autoc["n"] = auto
