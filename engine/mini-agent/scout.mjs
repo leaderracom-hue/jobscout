@@ -122,6 +122,7 @@ const FAMILY = /שיווק|marketing|דיגיט|digital|crm|מוצר|product|ל�
 const core = [KW, SEARCH, HE].filter(Boolean).map(rx);
 const descOk = d => { d = String(d || ""); return core.some(r => r.test(d)) || includes.filter(r => r.test(d)).length >= 3; };
 const relevant = (b, j) => { const v = titleVerdict(j.title); return v === "in" || (v === "maybe" && DESC_BOARDS.has(b) && FAMILY.test(j.title || "") && descOk(j.desc)); };
+const GTM_RX = /\bgtm\b/i;
 const normKey = j => (String(j.company || "").toLowerCase().replace(/[^a-z֐-׿0-9]/g, "").slice(0, 10)) + "|" + String(j.title || "").toLowerCase().replace(/[^a-z֐-׿0-9]/g, "").slice(0, 24);
 
 // ---------- apify ----------
@@ -189,7 +190,9 @@ for (const b of BOARDS) {
     const j = { board: b, ...NORM[b](it) }; j.dayOnly = /T21:59:59\.000Z$/.test(j.posted || "");
     if (!j.url || seenUrl.has(j.url)) continue; seenUrl.add(j.url);
     if (isCyber(j, it)) { s.cyber++; continue; }                       // Assaf: never cyber / security
-    if (!ALL_TITLES && !relevant(b, j)) { s.title++; continue; }
+    // Assaf 19 Nov: a job with "GTM" in the title or the description always stays (any keyword, no title/dev/QA filter); cyber, location and age still apply
+    if (GTM_RX.test(j.title || "") || GTM_RX.test(j.desc || "")) j.gtm = true;
+    if (!ALL_TITLES && !j.gtm && !relevant(b, j)) { s.title++; continue; }
     if (!locOk(j)) { s.loc++; continue; }
     if (!daysOk(j)) { s.days++; continue; }
     s.kept++;

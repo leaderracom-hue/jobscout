@@ -28,8 +28,8 @@ import streamlit as st
 APP = Path(__file__).parent
 IL = ZoneInfo("Asia/Jerusalem")
 GH = "https://api.github.com"
-# Assaf 19 Nov: dropped gtm ai, ai trainer, freelancer (no job ever scored 45+); integration / product erp were already gone
-KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm product", "gtm engineer", "ai builder", "ai automation",
+# Assaf 19 Nov: dropped ai trainer, freelancer (gtm ai restored: GTM roles always stay) (no job ever scored 45+); integration / product erp were already gone
+KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm product", "gtm ai", "gtm engineer", "ai builder", "ai automation",
             "automation", "crm integration", "crm automation", "מנהל מוצר", "מנהל מוצר אוטומציות", "אוטומציות שיווק", "מנהל פרויקט אוטומציות",
             # Assaf 18 Nov: 12 more
             "מיישם פתרונות ai", "ai implementation", "ai solutions", "ai product owner", "technical product manager", "data product manager",
@@ -229,13 +229,21 @@ def _word_hit(word, text):
     return w in str(text or "")
 
 
+GTM_RX = re.compile(r"\bgtm\b", re.I)
+
+
+def is_gtm(j):
+    """Assaf 19 Nov: any job with GTM in the title or the post text always stays: never hidden by exclude words, never auto-removed for a low score."""
+    return bool(j.get("gtm") or GTM_RX.search(str(j.get("title") or "")) or GTM_RX.search(str(j.get("desc") or "")))
+
+
 def excluded(s, j):
     """Why a job is filtered out by the user's own rules, or None."""
     cfg = settings_of(s)
     ck = company_key(j.get("company"))
     if ck and ck in cfg["blocked_companies"]:
         return f"חברה חסומה: {j.get('company')}"
-    if any(_word_hit(w, j.get("title")) for w in cfg["keep_words"]):  # "never hide" words win over exclude words (e.g. GTM AI Engineer)
+    if is_gtm(j) or any(_word_hit(w, j.get("title")) for w in cfg["keep_words"]):  # GTM jobs + "never hide" words win over exclude words
         return None
     for w in cfg["exclude_words"]:
         if _word_hit(w, j.get("title")):
@@ -369,7 +377,9 @@ def search_core(kw, hours, batch, report):
             fit = scores.get(k, {}).get("fit")
             if (fit is None or fit >= MIN_FIT) and j.get("desc"):  # kept while the job is open, for "Ask Claude"
                 st_["jobs"][k]["desc"] = str(j["desc"])[:3000]
-            if fit is not None and fit < MIN_FIT:  # never shown, never returns
+            if is_gtm(j):
+                st_["jobs"][k]["gtm"] = True
+            if fit is not None and fit < MIN_FIT and not is_gtm(j):  # never shown, never returns (GTM jobs always stay)
                 st_["archive"][k] = {"status": "auto", "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
                                      "urls": list((j.get("links") or {"x": j.get("url")}).values())}
         for k, j, why in blocked:
@@ -377,7 +387,7 @@ def search_core(kw, hours, batch, report):
                               "kws": [kw], "foundAt": now, "posted": j.get("posted")}
             st_["archive"][k] = {"status": "auto", "reason": "excluded", "note": why, "at": now, "title": j["title"], "company": j.get("company"),
                                  "urls": list((j.get("links") or {"x": j.get("url")}).values())}
-        auto = len(blocked) + sum(1 for k, _ in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
+        auto = len(blocked) + sum(1 for k, j in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT and not is_gtm(j)))
         autoc["n"] = auto
         runs =[{"kw": kw, "hours": hours or None, "at": now, "batch": batch, "found": len(found), "new": len(fresh), "autoRemoved": auto,
                  "stats": stats, "keys": keys, "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:499]
@@ -420,7 +430,7 @@ GROUPS = {
     "אוטומציה ושיווק": ["מנהל מוצר אוטומציות", "marketing automation", "אוטומציות שיווק", "מנהל פרויקט אוטומציות", "automation", "lifecycle marketing", "מנהל מערכות שיווק"],
     "AI": ["ai builder", "ai automation", "מיישם פתרונות ai", "ai implementation", "ai solutions"],
     "CRM": ["crm product", "crm integration", "crm automation"],
-    "GTM ועוד": ["gtm product", "gtm engineer", "טרנספורמציה דיגיטלית", "מנהל חדשנות"],
+    "GTM ועוד": ["gtm product", "gtm ai", "gtm engineer", "טרנספורמציה דיגיטלית", "מנהל חדשנות"],
 }
 TOP10 = ["מנהל מוצר אוטומציות", "marketing automation", "ai builder", "אוטומציות שיווק", "gtm product", "product ai", "מנהל מוצר",
          "gtm engineer", "product marketing", "ai automation"]
@@ -666,6 +676,8 @@ def card(j, new=False):
     fit = j.get("fit")
     cv = j.get("cv") or ""
     tags = '<span class="tag t-new">חדשה</span>' if new else ""
+    if is_gtm(j):
+        tags += '<span class="tag t-ok">GTM · תמיד נשאר</span>'
     ck = company_key(j.get("company"))
     if ck and ck in CTX["followed"]:
         tags += '<span class="tag t-star">⭐ במעקב</span>'
