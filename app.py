@@ -1591,6 +1591,98 @@ def research_block(s):
             st.markdown("\n".join(f"- {q}" for q in d["open_questions"]))
 
 
+OPT_LOG = [  # Assaf 19 Nov: the changes made to the search, shown as before -> after on the Stats page
+    ("AllJobs", "נכשל, 0 משרות (נגמר הזמן)", "תוקן: 40 משרות, עד 180 שניות", "18.11"),
+    ("דפי קריירה", "45 חברות · Comeet נשלח לדירוג בלי תיאור", "206 חברות · Comeet עם תיאור מלא", "18–19.11"),
+    ("JobMaster", "לא מחובר", "מחובר · 70 משרות לחיפוש", "18–19.11"),
+    ("דרושים", "3 עמודים לשאילתה", "5 עמודים לשאילתה", "19.11"),
+    ("Indeed", "פעיל, 0 הגשות", "כבוי", "18.11"),
+    ("מילות חיפוש", "17 · 5 בלי אף משרה טובה", "27 · \"⭐ מומלצות\" (11) · 5 מתות נמחקו", "18–19.11"),
+    ("סינון רעש", "אין", "מילים לסינון · GTM תמיד נשאר · חסימת חברות", "19.11"),
+    ("סייבר", "69 חברות · היו דליפות", "78 חברות + בדיקה שנייה באפליקציה", "19.11"),
+    ("סף התאמה", "45", f"{MIN_FIT} · מתחת לסף לא מופיע לעולם", "19.11"),
+    ("דשבורד", "עמוד אחד", "7 עמודים · טבלה · פעולות על כמה משרות · ביטול · Claude", "19.11"),
+]
+
+
+def optimization_block(s):
+    """Assaf 19 Nov: the optimization report, live from the data (numbers update with every search)."""
+    arc, jobs = s["archive"], s["jobs"]
+    status = lambda j: (arc.get(j["key"]) or {}).get("status") or "open"
+    scored = [j for j in jobs.values() if j.get("fit") is not None]
+    good = [j for j in scored if j["fit"] >= MIN_FIT]
+    sent = [j for j in jobs.values() if status(j) == "sent"]
+    open_n = sum(1 for j in jobs.values() if status(j) == "open" and (j.get("fit") is None or j["fit"] >= MIN_FIT) and not excluded(s, j))
+    claude = sum((r.get("claudeUsd") or 0) for r in s.get("runs", []))
+    apify, apify_cap = apify_usage()
+    total = claude + (apify or 0)
+    st.markdown("##### 📈 דוח אופטימיזציה")
+    st.caption("המספרים מתעדכנים אחרי כל חיפוש. עלות Apify היא של החודש הנוכחי, ועלות Claude היא מכל החיפושים השמורים.")
+    k = st.columns(6)
+    k[0].metric("משרות שנמצאו", len(jobs))
+    k[1].metric(f"ציון {MIN_FIT}+", len(good), f"{_pct(len(good), len(scored))}% מהמדורגות", delta_color="off")
+    k[2].metric("הגשות", len(sent))
+    k[3].metric("עלות כוללת", f"${total:.1f}", f"Apify ${apify or 0:.1f} + Claude ${claude:.1f}", delta_color="off")
+    k[4].metric("עלות להגשה", f"${total / max(1, len(sent)):.2f}")
+    k[5].metric("משרות פתוחות", open_n, "התיבה נקייה" if not open_n else None, delta_color="off")
+
+    t1, t2, t3, t4 = st.tabs(["🔁 לפני ← אחרי", "📊 הגשות וציונים", "📡 מקורות", "🧹 מה מסונן"])
+    with t1:
+        st.dataframe(pd.DataFrame([{"תחום": a, "לפני": b, "אחרי": c, "מתי": d} for a, b, c, d in OPT_LOG]), hide_index=True, width="stretch",
+                     column_config={"אחרי": st.column_config.TextColumn("אחרי", width="large"), "לפני": st.column_config.TextColumn("לפני", width="medium")})
+    with t2:
+        c1, c2 = st.columns(2)
+        days = {}
+        for a in arc.values():
+            if a.get("status") == "sent" and a.get("at"):
+                d = to_il(a["at"]).date()
+                days[d] = days.get(d, 0) + 1
+        if days:
+            first, today = min(days), dt.datetime.now(IL).date()
+            rng = [first + dt.timedelta(days=i) for i in range((today - first).days + 1)]
+            c1.caption(f"הגשות ביום (יעד {int(secret('DAILY_GOAL', 50))}) · ימים בלי עמודה = לא היו חיפושים")
+            c1.bar_chart(pd.DataFrame({"הגשות": [days.get(d, 0) for d in rng]}, index=[d.strftime("%d.%m") for d in rng]), color="#2a55c9", height=240)
+        rows = []
+        for lo, hi, name in [(MIN_FIT, 55, f"{MIN_FIT}–54"), (55, 65, "55–64"), (65, 75, "65–74"), (75, 101, "75+")]:
+            b = [j for j in scored if lo <= j["fit"] < hi and status(j) in ("sent", "removed")]
+            rows.append({"ציון": name, "% שנשלחו": _pct(sum(1 for j in b if status(j) == "sent"), len(b)), "משרות שסימנת": len(b)})
+        c2.caption("אחוז הגשה לפי ציון: הציון מנבא מה תשלח")
+        c2.bar_chart(pd.DataFrame(rows).set_index("ציון")[["% שנשלחו"]], color="#16794a", height=240)
+    with t3:
+        src = {}
+        for j in jobs.values():
+            for b in j.get("boards", []):
+                o = src.setdefault(b, {"מקור": BOARD.get(b, b), "משרות": 0, f"{MIN_FIT}+": 0, "הגשות": 0})
+                o["משרות"] += 1
+                o[f"{MIN_FIT}+"] += (j.get("fit") or 0) >= MIN_FIT
+                o["הגשות"] += status(j) == "sent"
+        df = pd.DataFrame(sorted(src.values(), key=lambda o: -o["הגשות"]))
+        if not df.empty:
+            df["% נשלחו מ-" + f"{MIN_FIT}+"] = [_pct(a, b) for a, b in zip(df["הגשות"], df[f"{MIN_FIT}+"])]
+            c1, c2 = st.columns(2)
+            c1.caption("הגשות לפי מקור")
+            c1.bar_chart(df.set_index("מקור")[["הגשות"]], horizontal=True, color="#2a55c9", height=240)
+            c2.caption(f"אחוז הגשה מתוך משרות {MIN_FIT}+ (גבוה = מקור מדויק)")
+            c2.bar_chart(df.set_index("מקור")[["% נשלחו מ-" + f"{MIN_FIT}+"]], horizontal=True, color="#16794a", height=240)
+    with t4:
+        reasons = {"ציון מתחת לסף": 0, "מילים / חברות חסומות": 0, "סייבר": 0}
+        for a in arc.values():
+            if a.get("status") == "auto":
+                reasons["סייבר" if a.get("reason") == "cyber" else "מילים / חברות חסומות" if a.get("reason") == "excluded" else "ציון מתחת לסף"] += 1
+        cfg = settings_of(s)
+        c1, c2 = st.columns([1.3, 1])
+        c1.caption("משרות שהוסרו אוטומטית, לפי סיבה")
+        c1.bar_chart(pd.DataFrame({"משרות": list(reasons.values())}, index=list(reasons)), horizontal=True, color="#7a3fb0", height=200)
+        c2.markdown(f"- **{len(cfg['exclude_words'])}** מילים לסינון\n- **{len(cfg['blocked_companies'])}** חברות חסומות\n"
+                    f"- **{len((DICT.get('_exclude') or {}).get('companies', []))}** חברות סייבר במנוע\n- תמיד נשאר: **GTM**"
+                    + (f", {', '.join(cfg['keep_words'])}" if [w for w in cfg["keep_words"] if w.upper() != "GTM"] else ""))
+    good_rate = _pct(len(sent), len(good))
+    need = int(secret("DAILY_GOAL", 50)) / max(0.01, good_rate / 100)
+    st.markdown(f"<div style='background:#eaf0fc;border-right:5px solid #2a55c9;border-radius:10px;padding:10px 14px;margin:8px 0 4px;color:#1d3f8f'>"
+                f"🧭 <b>הצעד הבא:</b> אתה שולח ל-{good_rate}% מהמשרות הטובות, ולכן כדי להגיע ל-{int(secret('DAILY_GOAL', 50))} הגשות ביום צריך כ-{need:.0f} "
+                f"משרות עם ציון {MIN_FIT}+ בכל יום. הדרך לשם: \"⭐ מומלצות\" פעמיים ביום, בלי ימים מדולגים.</div>", unsafe_allow_html=True)
+
+
 def page_stats():
     s, _ = load_state()
     arc, jobs = s["archive"], s["jobs"]
@@ -1615,6 +1707,7 @@ def page_stats():
     m5.metric("Apify החודש", f"${usd:.2f}" if usd is not None else "?", f"{_pct(usd or 0, cap_usd or 0)}% מתוך ${cap_usd:.0f}" if cap_usd else None, delta_color="off")
 
     insights_block(s)
+    optimization_block(s)
     research_block(s)
     st.markdown("##### ✨ שאל את הנתונים")
     ask_data_panel()
