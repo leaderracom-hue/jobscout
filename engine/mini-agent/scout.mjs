@@ -29,7 +29,7 @@ const HE = flag("he", entry.he || "");
 const LOC = flag("loc", "all");
 const DAYS = +flag("days", 7);
 const ROWS = +flag("rows", 30);
-const ROWS_DEFAULT = { linkedin: 70, alljobs: 40, jobmaster: 40, indeed: 70 }; // Assaf 12 Nov: 70 per board; 18 Nov: AllJobs 40 (70 + full details never finished), JobMaster 40
+const ROWS_DEFAULT = { linkedin: 70, alljobs: 40, jobmaster: 70, indeed: 70 }; // 19 Nov: JobMaster 40 -> 70 (79% of its 40+ jobs get sent) // Assaf 12 Nov: 70 per board; 18 Nov: AllJobs 40 (70 + full details never finished), JobMaster 40
 const R = b => (flag("rows", false) ? ROWS : ROWS_DEFAULT[b] || ROWS);
 const BOARDS = String(flag("free", false) ? "drushim,careers" : flag("boards", "linkedin,drushim,alljobs,jobmaster,careers")).split(",").map(s => s.trim()).filter(Boolean);
 const DRY = !!flag("dry", false), MATCH = !!flag("match", false), ALL_TITLES = !!flag("all-titles", false);
@@ -49,7 +49,7 @@ const ACTORS = {
   jobmaster:{ id: "getascraper/jobmaster-scraper", perItem: 0.0015, runs: () => [{ searchQueries: [SEARCH, HE].filter(Boolean), maxItems: R("jobmaster"), maxItemsPerQuery: HE ? Math.ceil(R("jobmaster") / 2) : R("jobmaster"), sortBy: "newest" }] },
 };
 const FREE = {
-  drushim: () => drushimFree([...new Set([SEARCH, HE, ...(entry.drushimQueries || [])].filter(Boolean))], { pages: 3 }), // Drushim ranks by relevance, so breadth = freshness
+  drushim: () => drushimFree([...new Set([SEARCH, HE, ...(entry.drushimQueries || [])].filter(Boolean))], { pages: 5 }), // 19 Nov: 3 -> 5 pages (75% of its 40+ jobs get sent). Drushim ranks by relevance, so breadth = freshness
   careers: () => careersFree(),
 };
 for (const b of BOARDS) if (!ACTORS[b] && !FREE[b]) { console.log("unknown board:", b, "— use", [...Object.keys(ACTORS), ...Object.keys(FREE)].join(",")); process.exit(1); }

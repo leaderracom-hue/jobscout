@@ -449,6 +449,10 @@ GROUPS = {
     "CRM": ["crm product", "crm integration", "crm automation"],
     "GTM ועוד": ["gtm product", "gtm ai", "gtm engineer", "טרנספורמציה דיגיטלית", "מנהל חדשנות"],
 }
+# Assaf 19 Nov (research report): run these, twice a day if possible - the keywords that lead to applications,
+# plus small keywords with a high send rate. Noisy ones (AI Automation, AI Solutions, GTM AI) stay out.
+RECOMMENDED = ["מנהל מוצר אוטומציות", "מנהל מוצר", "product ai", "technical product manager", "ai builder", "marketing automation",
+               "gtm engineer", "מנהל חדשנות", "מיישם פתרונות ai", "ai implementation", "ai product owner"]
 TOP10 = ["מנהל מוצר אוטומציות", "marketing automation", "ai builder", "אוטומציות שיווק", "gtm product", "product ai", "מנהל מוצר",
          "gtm engineer", "product marketing", "ai automation"]
 NEW12 = ["מיישם פתרונות ai", "ai implementation", "ai solutions", "ai product owner", "technical product manager", "data product manager",
@@ -971,7 +975,8 @@ def page_search():
 
     st.markdown("##### מילות חיפוש")
     p = st.columns(5)
-    p[0].button("⭐ 10 החזקות", on_click=_preset, args=(TOP10,), width="stretch")
+    p[0].button(f"⭐ מומלצות ({len(RECOMMENDED)})", on_click=_preset, args=(RECOMMENDED,), width="stretch", type="primary",
+                help="המילים שמביאות הכי הרבה הגשות + מילים קטנות עם אחוז שליחה גבוה. כדאי להריץ פעמיים ביום")
     p[1].button("🆕 12 החדשות", on_click=_preset, args=(NEW12,), width="stretch")
     p[2].button("כל המילים", on_click=_preset, args=(KEYWORDS,), width="stretch")
     p[3].button("נקה", on_click=_preset, args=([],), width="stretch")
