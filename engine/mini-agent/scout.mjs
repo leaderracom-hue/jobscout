@@ -43,7 +43,8 @@ const WT = String(flag("wt", "") || "").split(",").map(s => s.trim()).filter(Boo
 const JT = String(flag("jt", "") || "").split(",").map(s => s.trim()).filter(Boolean);
 const LI_GEO = { IL: { location: "Israel", geoId: "101620260" }, EEA: { location: "European Union", geoId: "91000000" } }; // 91000000 verified 21 Nov (EU jobs)
 const WT_CODE = { remote: "2", hybrid: "3", onsite: "1" }, JT_CODE = { full: "F", part: "P", contract: "C", freelance: "C,T" };
-const liFilters = () => (WT.length ? `&f_WT=${encodeURIComponent(WT.map(w => WT_CODE[w]).filter(Boolean).join(","))}` : "")
+// 22 Nov: measured - the actor returns 0 items (4 s, no error) whenever f_WT is in the URL, and 70 without filters. Filters are NOT sent to LinkedIn; the app's scoring reads the arrangement / type from the post.
+const liFilters = () => ""; const liFiltersOff = () => (WT.length ? `&f_WT=${encodeURIComponent(WT.map(w => WT_CODE[w]).filter(Boolean).join(","))}` : "")
   + (JT.length ? `&f_JT=${encodeURIComponent([...new Set(JT.flatMap(t => (JT_CODE[t] || "").split(",")).filter(Boolean))].join(","))}` : "");
 const IL_ONLY = new Set(["drushim", "alljobs", "jobmaster", "drushimapify", "indeed"]); // Israeli boards: skipped when Israel is not selected
 

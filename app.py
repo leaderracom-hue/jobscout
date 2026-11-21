@@ -1470,7 +1470,7 @@ def prefs_panel(s):
         if "EEA" in regions:
             notes.append("ב-EEA: LinkedIn (האיחוד האירופי) ודפי הקריירה של 206 החברות עם משרות באירופה. אתה אזרח פולני, ולכן זכאי לעבוד באיחוד; בכל משרה נבדק אם המעסיק מאפשר עבודה מישראל.")
         if emp or arr:
-            notes.append("ב-LinkedIn הסינון נעשה כבר בחיפוש. בשאר המקורות Claude קורא את המשרה; מה שלא כתוב בה מסומן \"דורש אימות\".")
+            notes.append("הסינון לפי סוג העסקה ואופי עבודה נעשה על ידי Claude שקורא כל משרה (LinkedIn החזיר 0 תוצאות כשהסינון נשלח אליו). מה שלא כתוב במשרה מסומן \"דורש אימות\".")
         for n in notes:
             st.caption(n)
     new = {"regions": regions or ["IL"], "employment": emp, "arrangement": arr, "sources": src or list(SOURCES), "countries": countries}
