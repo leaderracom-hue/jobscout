@@ -1099,6 +1099,35 @@ def _gen_text(j, kind):
     return t[:290] if kind == "note" else t
 
 
+def _cover_pdf(text, rtl):
+    """One-page letter as PDF (DejaVu Sans, Hebrew shaped and right-to-left when the job is Hebrew)."""
+    from fpdf import FPDF
+    pdf = FPDF(format="A4")
+    pdf.set_margins(22, 22, 22)
+    pdf.add_page()
+    pdf.add_font("DV", "", str(APP / "fonts" / "DejaVuSans.ttf"))
+    pdf.set_font("DV", size=11)
+    pdf.set_text_shaping(True)
+    for para in [x for x in text.split("\n\n") if x.strip()] or [text]:
+        pdf.multi_cell(0, 6.2, para.strip(), align="R" if rtl else "L", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(3)
+    return bytes(pdf.output())
+
+
+def _save_cover(fn, text, rtl):
+    """Copy of the PDF into cover-letter/ in the private data repo (a local script syncs it to the Cover Letter folder on the PC)."""
+    try:
+        data = base64.b64encode(_cover_pdf(text, rtl)).decode()
+        url = gh_url("cover-letter/" + fn)
+        old = requests.get(url, headers=gh_headers(), timeout=20)
+        body = {"message": "cover letter " + fn, "content": data}
+        if old.status_code == 200:
+            body["sha"] = old.json()["sha"]
+        requests.put(url, headers=gh_headers(), json=body, timeout=40)
+    except Exception:
+        pass
+
+
 def _cover_docx(text, rtl):
     """Plain Word letter: the edited text, paragraphs kept, right-to-left for Hebrew."""
     import io
@@ -1144,9 +1173,10 @@ def _gen_panel(j, kind):
         txt = st.session_state.get(f"gt-{gk}", G[gk])
         st.caption("ערוך כאן, ואז סמן והעתק. הטקסט לא נשלח לשום מקום.")
         if kind == "cover":
-            fn = "Cover-Letter-" + re.sub(r"[^A-Za-z0-9]+", "-", str(j.get("company") or "job")).strip("-") + ".docx"
-            st.download_button("⬇ הורד כ-Word", _cover_docx(txt, j.get("lang") == "he"), file_name=fn, key=f"gd-{gk}", width="stretch",
-                               mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            fn = "Cover-Letter-" + re.sub(r"[^A-Za-z0-9]+", "-", str(j.get("company") or "job")).strip("-") + ".pdf"
+            st.download_button("⬇ הורד כ-PDF", _cover_pdf(txt, j.get("lang") == "he"), file_name=fn, key=f"gd-{gk}", width="stretch",
+                               mime="application/pdf", on_click=_save_cover, args=(fn, txt, j.get("lang") == "he"))
+            st.caption("בלחיצה הקובץ יורד, ועותק נשמר גם בתיקיית cover-letter במאגר הנתונים. סנכרון לתיקיית Cover Letter במחשב: Sync-Cover-Letters.bat.")
 
 
 def block_actions(sel, where):
