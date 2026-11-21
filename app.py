@@ -547,7 +547,7 @@ EEA_SOURCES = {"himalayas"}
 IL_SOURCES = {"alljobs", "jobmaster", "drushim"}
 EMP_ARG = {"Full-Time": "full", "Part-Time": "part", "Contract": "contract", "Freelance": "freelance"}
 ARR_ARG = {"Remote": "remote", "Hybrid": "hybrid", "On-site": "onsite"}
-DEFAULT_PREFS = {"regions": ["IL"], "employment": [], "arrangement": [], "sources": list(SOURCES)}
+DEFAULT_PREFS = {"regions": ["IL"], "employment": [], "arrangement": [], "sources": list(SOURCES), "countries": []}
 
 
 def prefs_of(s):
@@ -610,6 +610,14 @@ def search_core(kw, hours, batch, report, prefs=None):
         (seen_again.__setitem__(k, j) if k in s["jobs"] else fresh.append((k, j)))
     blocked = [(k, j, excluded(s, j)) for k, j in fresh if excluded(s, j)]  # user's exclude words / blocked companies: no scoring cost
     fresh = [(k, j) for k, j in fresh if not excluded(s, j)]
+    # Assaf 22 Nov: EU country filter - jobs that name only EU countries outside the chosen ones are dropped before scoring (no Claude cost)
+    pick = set(prefs.get("countries") or [])
+    if pick:
+        def _wrong_country(j):
+            cs = [c for c in job_countries(j) if c in EU_COUNTRIES]
+            return bool(cs) and not (set(cs) & pick) and LOC_IL not in job_countries(j)
+        blocked += [(k, j, "מדינה שלא נבחרה: " + ", ".join(c for c in job_countries(j) if c in EU_COUNTRIES)) for k, j in fresh if _wrong_country(j)]
+        fresh = [(k, j) for k, j in fresh if not _wrong_country(j)]
     # Assaf 21 Nov: jobs outside Israel must be in English - checked for free before scoring
     blocked += [(k, j, "משרה בחו״ל שלא כתובה באנגלית") for k, j in fresh if is_international(j) and not is_english_post(j)]
     fresh = [(k, j) for k, j in fresh if not (is_international(j) and not is_english_post(j))]
@@ -1416,7 +1424,7 @@ def _preset(keys):
 def prefs_panel(s):
     """Assaf 21 Nov: search terms kept apart from keywords: region, employment type, work arrangement, sources. Saved with the data."""
     p = prefs_of(s)
-    for key, val in (("pf_regions", p["regions"]), ("pf_emp", p["employment"]), ("pf_arr", p["arrangement"]), ("pf_src", p["sources"])):
+    for key, val in (("pf_regions", p["regions"]), ("pf_emp", p["employment"]), ("pf_arr", p["arrangement"]), ("pf_src", p["sources"]), ("pf_cty", p.get("countries", []))):
         st.session_state.setdefault(key, list(val))
     with st.container(border=True):
         st.markdown("##### תנאים ומקורות")
@@ -1429,6 +1437,10 @@ def prefs_panel(s):
             st.session_state.pf_src = list(SOURCES)
         c2.button("בחר את כל המקורות", on_click=_all_src, key="pf_src_all")
         src = st.pills("מקורות", list(SOURCES), format_func=SOURCES.get, selection_mode="multi", key="pf_src") or []
+        countries = []
+        if "EEA" in regions:
+            countries = st.multiselect("מדינות באיחוד האירופי (ריק = כל האיחוד)", sorted(EU_COUNTRIES), key="pf_cty", placeholder="כל מדינות האיחוד האירופי",
+                                       help="משרות שהמיקום שלהן מציין רק מדינות אחרות יוסרו בחינם לפני הדירוג. משרות בלי מדינה (מרחוק) נשארות.")
         notes = []
         if not regions:
             notes.append("בחר לפחות אזור אחד.")
@@ -1442,7 +1454,7 @@ def prefs_panel(s):
             notes.append("ב-LinkedIn הסינון נעשה כבר בחיפוש. בשאר המקורות Claude קורא את המשרה; מה שלא כתוב בה מסומן \"דורש אימות\".")
         for n in notes:
             st.caption(n)
-    new = {"regions": regions or ["IL"], "employment": emp, "arrangement": arr, "sources": src or list(SOURCES)}
+    new = {"regions": regions or ["IL"], "employment": emp, "arrangement": arr, "sources": src or list(SOURCES), "countries": countries}
     return new
 
 
