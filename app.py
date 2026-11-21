@@ -977,6 +977,42 @@ def ask_panel(j):
 CTX = {"sent_by_co": {}, "followed": set()}
 
 
+EU_COUNTRIES = {  # EU-27, with the spellings job posts use
+    "Austria": ["austria", "österreich", "vienna"], "Belgium": ["belgium", "belgië", "brussels"], "Bulgaria": ["bulgaria", "sofia"],
+    "Croatia": ["croatia", "zagreb"], "Cyprus": ["cyprus", "nicosia", "limassol"], "Czechia": ["czech", "prague", "praha"],
+    "Denmark": ["denmark", "copenhagen"], "Estonia": ["estonia", "tallinn"], "Finland": ["finland", "helsinki"],
+    "France": ["france", "paris"], "Germany": ["germany", "deutschland", "berlin", "munich", "münchen", "hamburg"],
+    "Greece": ["greece", "athens"], "Hungary": ["hungary", "budapest"], "Ireland": ["ireland", "dublin"],
+    "Italy": ["italy", "italia", "milan", "rome"], "Latvia": ["latvia", "riga"], "Lithuania": ["lithuania", "vilnius"],
+    "Luxembourg": ["luxembourg"], "Malta": ["malta"], "Netherlands": ["netherlands", "holland", "amsterdam", "rotterdam"],
+    "Poland": ["poland", "polska", "warsaw", "krakow", "wroclaw"], "Portugal": ["portugal", "lisbon", "porto"],
+    "Romania": ["romania", "bucharest"], "Slovakia": ["slovakia", "bratislava"], "Slovenia": ["slovenia", "ljubljana"],
+    "Spain": ["spain", "españa", "madrid", "barcelona"], "Sweden": ["sweden", "stockholm"]}
+EU_RX = {c: re.compile(r"(?<![a-z])(?:" + "|".join(re.escape(x) for x in v) + r")(?![a-z])", re.I) for c, v in EU_COUNTRIES.items()}
+LOC_ALL_EU, LOC_IL, LOC_REMOTE = "🇪🇺 כל האיחוד האירופי", "ישראל", "ללא מדינה / מרחוק בעולם"
+
+
+def job_countries(j):
+    """Countries named in the job's location text (EU-27 + Israel). Empty list = no country stated."""
+    loc = str(j.get("location") or "")
+    out = [c for c, rx in EU_RX.items() if rx.search(loc)]
+    if re.search(r"israel|tel aviv|jerusalem|haifa|[֐-׿]", loc, re.I) or (not out and set(j.get("boards") or []) & {"alljobs", "jobmaster", "drushim"}):
+        out.append(LOC_IL)
+    return out
+
+
+def loc_match(j, picks):
+    cs = job_countries(j)
+    for p in picks:
+        if p == LOC_ALL_EU and any(c in EU_COUNTRIES for c in cs):
+            return True
+        if p == LOC_REMOTE and not cs:
+            return True
+        if p in cs:
+            return True
+    return False
+
+
 def fit_cls(fit):
     return "f-na" if fit is None else "f-hi" if fit >= 80 else "f-mid" if fit >= 60 else "f-lo"
 
@@ -1258,13 +1294,15 @@ def inbox_body():
     m4.metric("נשלחו היום", sent_today(s))
 
     with st.container(border=True):
-        f1, f2, f3, f4 = st.columns([3, 2.2, 2, 1.6])
+        f1, f2, f3, f4, f5 = st.columns([2.6, 1.9, 1.8, 1.7, 1.7])
         q = f1.text_input("חיפוש", placeholder="🔎 חברה או תפקיד…", key="f_q", label_visibility="collapsed")
         kw_opts = sorted({k for j in opn for k in j.get("kws", [])}, key=lbl)
         f_kw = f2.multiselect("מילה", kw_opts, format_func=lbl, placeholder="כל המילים", key="f_kw", label_visibility="collapsed")
         src_opts = sorted({x for j in opn for x in j.get("boards", [])})
         f_src = f3.multiselect("מקור", src_opts, format_func=lambda x: BOARD.get(x, x), placeholder="כל המקורות", key="f_src", label_visibility="collapsed")
         f_min = f4.selectbox("ציון", [0, 60, 70, 80], format_func=lambda v: "כל הציונים" if not v else f"ציון {v}+", key="f_min", label_visibility="collapsed")
+        f_loc = f5.multiselect("מיקום", [LOC_ALL_EU, LOC_IL, LOC_REMOTE] + sorted(EU_COUNTRIES), placeholder="כל המיקומים", key="f_loc",
+                               label_visibility="collapsed", help="לפי המדינה שכתובה במיקום המשרה. האיחוד האירופי = כל 27 המדינות")
         g1, g2, g5, g3, g4 = st.columns([3.2, 1.3, 1.4, 1.8, 2])
         age = g1.segmented_control("פורסם", list(AGE), format_func=lambda a: AGE[a], default="all", key="age_view", label_visibility="collapsed") or "all"
         only_new = g2.toggle("רק חדשות", key="only_new")
@@ -1284,6 +1322,8 @@ def inbox_body():
         shown = [j for j in shown if set(f_src) & set(j.get("boards", []))]
     if f_min:
         shown = [j for j in shown if (j.get("fit") or 0) >= f_min]
+    if f_loc:
+        shown = [j for j in shown if loc_match(j, f_loc)]
     if only_new:
         shown = [j for j in shown if is_new(j)]
     if only_star:
@@ -1320,7 +1360,7 @@ def inbox_body():
     p1, p2, p3, p4 = st.columns([1.6, 3, 1, 1], vertical_alignment="center")
     size = p1.segmented_control("בעמוד", [10, 25, 50], default=25, key="page_size", label_visibility="collapsed") or 25
     pages = max(1, -(-n_all // size))
-    sig = (q, tuple(f_kw), tuple(f_src), f_min, age, only_new, only_star, sort, size, bool(hist))
+    sig = (q, tuple(f_kw), tuple(f_src), tuple(f_loc), f_min, age, only_new, only_star, sort, size, bool(hist))
     if st.session_state.get("page_sig") != sig:
         st.session_state.page_sig, st.session_state.page = sig, 1
     page = min(max(1, st.session_state.get("page", 1)), pages)
