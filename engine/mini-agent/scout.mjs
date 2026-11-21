@@ -23,7 +23,8 @@ const flag = (n, d) => { const i = argv.indexOf("--" + n); return i < 0 ? d : (a
 const KW = argv.find(a => !a.startsWith("--") && argv[argv.indexOf(a) - 1]?.startsWith("--") !== true) || argv[0];
 if (!KW || KW.startsWith("--")) { console.log('usage: node mini-agent/scout.mjs "marketing automation" [--loc center] [--days 7] [--dry]'); process.exit(1); }
 const kwKey = KW.trim().toLowerCase();
-const SEARCH = (JSON.parse(fs.readFileSync(path.join(HERE, "dictionary.json"), "utf8"))[kwKey] || {}).en || KW; // what the boards get ("product ai" → "AI product manager")
+const EN_FLAG = flag("en", ""); // 22 Nov: the app passes an English term when the keyword is Hebrew, so LinkedIn is always searched in English
+const SEARCH = (typeof EN_FLAG === "string" && EN_FLAG) || (JSON.parse(fs.readFileSync(path.join(HERE, "dictionary.json"), "utf8"))[kwKey] || {}).en || KW; // what the boards get ("product ai" → "AI product manager")
 const entry = DICT[kwKey] || {};
 const HE = flag("he", entry.he || "");
 const LOC = flag("loc", "all");

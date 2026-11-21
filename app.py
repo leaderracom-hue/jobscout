@@ -559,6 +559,24 @@ def prefs_of(s):
     return p
 
 
+def english_term(kw):
+    """Assaf 22 Nov: LinkedIn is always searched in English. A Hebrew keyword that is not in the dictionary gets a short English job-search term
+    from the cheapest model (cached per keyword). Returns "" when the keyword is already English or known."""
+    if not re.search(r"[֐-׿]", kw) or (DICT.get(kw.strip().lower()) or {}).get("en"):
+        return ""
+    cache = SH.setdefault("en_terms", {})
+    if kw not in cache:
+        try:
+            import anthropic
+            r = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY")).messages.create(
+                model=MODEL, max_tokens=40, messages=[{"role": "user", "content": f"Translate this Hebrew job-search keyword into a short English job title or search phrase for LinkedIn. Return only the phrase.\n{kw}"}])
+            track(r)
+            cache[kw] = "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip().strip('"')[:60]
+        except Exception:
+            cache[kw] = ""
+    return cache[kw]
+
+
 def engine_args(prefs):
     a = ["--regions", ",".join(prefs.get("regions") or ["IL"]), "--boards", ",".join([x for x in (prefs.get("sources") or list(SOURCES)) if x in SOURCES] or list(SOURCES))]
     if prefs.get("arrangement"):
@@ -580,7 +598,8 @@ def search_core(kw, hours, batch, report, prefs=None):
         extra_path.write_text("[]", encoding="utf-8")
     env = {**os.environ, "APIFY_API_TOKEN": secret("APIFY_API_TOKEN", ""), "JOBENGINE_SERVER": "1", "JOBENGINE_RUNS_DIR": tempfile.gettempdir(),
            "JOBSCOUT_ATS_EXTRA": str(extra_path)}
-    test_free = ["--free"] if os.environ.get("JOBSCOUT_TEST_FREE") == "1" else []  # local test only: free sources, no Apify
+    en_term = english_term(kw)
+    test_free = (["--free"] if os.environ.get("JOBSCOUT_TEST_FREE") == "1" else []) + (["--en", en_term] if en_term else [])  # local test only: free sources, no Apify
     prefs = prefs or DEFAULT_PREFS
     p = subprocess.run(["node", str(APP / "engine/mini-agent/scout.mjs"), kw, "--out", out, "--days", str(days), *engine_args(prefs), *test_free],
                        cwd=str(APP / "engine"), env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
