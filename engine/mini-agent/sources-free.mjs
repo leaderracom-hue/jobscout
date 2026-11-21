@@ -69,11 +69,13 @@ async function ashby(c) {
 }
 const FETCH = { comeet, greenhouse, lever, ashby };
 
-export async function careers({ concurrency = 16 } = {}) {
+// 21 Nov: EU / EEA locations (countries, main cities, "Europe"/"EMEA"/"EU") for the EEA region choice
+const EEA = /europe|\bEMEA\b|\bEU\b|\bEEA\b|austria|vienna|belgium|brussels|bulgaria|sofia|croatia|zagreb|cyprus|limassol|nicosia|czech|prague|denmark|copenhagen|estonia|tallinn|finland|helsinki|france|paris|germany|berlin|munich|hamburg|frankfurt|greece|athens|hungary|budapest|ireland|dublin|italy|milan|rome|latvia|riga|lithuania|vilnius|luxembourg|malta|netherlands|amsterdam|rotterdam|poland|warsaw|krakow|wroclaw|portugal|lisbon|porto|romania|bucharest|slovakia|bratislava|slovenia|ljubljana|spain|madrid|barcelona|sweden|stockholm|norway|oslo|iceland|reykjavik|liechtenstein/i;
+export async function careers({ concurrency = 16, regions = ["IL"] } = {}) {
   const extra = process.env.JOBSCOUT_ATS_EXTRA && fs.existsSync(process.env.JOBSCOUT_ATS_EXTRA) ? JSON.parse(fs.readFileSync(process.env.JOBSCOUT_ATS_EXTRA, "utf8")) : [];
   const seen = new Set(); const list = [...JSON.parse(fs.readFileSync(path.join(HERE, "ats-companies.json"), "utf8")), ...extra].filter(c => FETCH[c.ats] && !seen.has(c.ats + c.slug) && seen.add(c.ats + c.slug));
   // the boards are the same for every keyword: fetch them once per 30 minutes and reuse (a multi-keyword search pays this once)
-  const cacheFile = path.join(process.env.TEMP || process.env.TMPDIR || "/tmp", `jobscout-careers-${list.length}.json`);
+  const cacheFile = path.join(process.env.TEMP || process.env.TMPDIR || "/tmp", `jobscout-careers-${list.length}-${[...regions].sort().join("")}.json`);
   try { const c = JSON.parse(fs.readFileSync(cacheFile, "utf8")); if (Date.now() - c.at < 30 * 60000) return { items: c.items, log: { ...c.log, cached: true } }; } catch {}
   const out = []; const log = { boards: list.length, ok: 0, failed: 0, jobsAll: 0 };
   const queue = [...list];
@@ -81,7 +83,10 @@ export async function careers({ concurrency = 16 } = {}) {
     for (;;) {
       const c = queue.shift(); if (!c) return;
       try { const jobs = await FETCH[c.ats](c); log.ok++; log.jobsAll += jobs.length;
-        for (const j of jobs) if (j.il || IL.test(j.location)) out.push({ ...j, ats: c.ats }); }
+        for (const j of jobs) {
+          const inIL = j.il || IL.test(j.location), inEEA = !inIL && EEA.test(j.location || "");
+          if ((inIL && regions.includes("IL")) || (inEEA && regions.includes("EEA"))) out.push({ ...j, ats: c.ats, region: inIL ? "IL" : "EEA" });
+        } }
       catch { log.failed++; (log.failedBoards ||= []).push(c.name); }
     }
   }));

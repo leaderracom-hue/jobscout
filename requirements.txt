@@ -1,3 +1,5 @@
 streamlit>=1.45
 requests>=2.32
 anthropic>=2.7
+pypdf>=5.0
+python-docx>=1.1

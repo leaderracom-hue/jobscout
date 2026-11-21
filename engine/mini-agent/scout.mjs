@@ -31,9 +31,19 @@ const DAYS = +flag("days", 7);
 const ROWS = +flag("rows", 30);
 const ROWS_DEFAULT = { linkedin: 70, alljobs: 40, jobmaster: 70, indeed: 70 }; // 19 Nov: JobMaster 40 -> 70 (79% of its 40+ jobs get sent) // Assaf 12 Nov: 70 per board; 18 Nov: AllJobs 40 (70 + full details never finished), JobMaster 40
 const R = b => (flag("rows", false) ? ROWS : ROWS_DEFAULT[b] || ROWS);
-const BOARDS = String(flag("free", false) ? "drushim,careers" : flag("boards", "linkedin,drushim,alljobs,jobmaster,careers")).split(",").map(s => s.trim()).filter(Boolean);
+const BOARDS_ASKED = String(flag("free", false) ? "drushim,careers" : flag("boards", "linkedin,drushim,alljobs,jobmaster,careers")).split(",").map(s => s.trim()).filter(Boolean);
+const BOARDS = BOARDS_ASKED.filter(b => !["drushim", "alljobs", "jobmaster", "drushimapify", "indeed"].includes(b) || String(flag("regions", "IL")).toUpperCase().includes("IL")); // Israeli boards only when Israel is selected
 const DRY = !!flag("dry", false), MATCH = !!flag("match", false), ALL_TITLES = !!flag("all-titles", false);
 const REPLAY = flag("replay", "");
+// 21 Nov: where (IL / EEA), how (remote / hybrid / onsite) and what contract (full / part / contract / freelance) — terms, not keywords
+const REGIONS_SEL = String(flag("regions", "IL")).split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+const WT = String(flag("wt", "") || "").split(",").map(s => s.trim()).filter(Boolean);
+const JT = String(flag("jt", "") || "").split(",").map(s => s.trim()).filter(Boolean);
+const LI_GEO = { IL: { location: "Israel", geoId: "101620260" }, EEA: { location: "European Union", geoId: "91000000" } }; // 91000000 verified 21 Nov (EU jobs)
+const WT_CODE = { remote: "2", hybrid: "3", onsite: "1" }, JT_CODE = { full: "F", part: "P", contract: "C", freelance: "C,T" };
+const liFilters = () => (WT.length ? `&f_WT=${encodeURIComponent(WT.map(w => WT_CODE[w]).filter(Boolean).join(","))}` : "")
+  + (JT.length ? `&f_JT=${encodeURIComponent([...new Set(JT.flatMap(t => (JT_CODE[t] || "").split(",")).filter(Boolean))].join(","))}` : "");
+const IL_ONLY = new Set(["drushim", "alljobs", "jobmaster", "drushimapify", "indeed"]); // Israeli boards: skipped when Israel is not selected
 
 // ---------- actors ----------
 const PUB = d => d <= 1 ? "r86400" : d <= 7 ? "r604800" : "r2592000";
@@ -42,7 +52,7 @@ const half = Math.ceil(ROWS / 2);
 const ACTORS = {
   // LinkedIn's own keyword search URL (title + description, Israel geoId, exact hours) so results match what the site shows;
   // the old "titles" input searched job titles only and missed ~60% of what LinkedIn lists (11 Nov check: 12/30).
-  linkedin: { id: "bebity/linkedin-jobs-scraper", perItem: 0.0015, runs: () => [{ startUrls: [{ url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(SEARCH)}&location=Israel&geoId=101620260&f_TPR=r${DAYS * 86400}` }], maxRowsPerUrl: R("linkedin"), rows: R("linkedin") }] },
+  linkedin: { id: "bebity/linkedin-jobs-scraper", perItem: 0.0015, runs: () => REGIONS_SEL.filter(r => LI_GEO[r]).map(r => ({ startUrls: [{ url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(SEARCH)}&location=${encodeURIComponent(LI_GEO[r].location)}&geoId=${LI_GEO[r].geoId}&f_TPR=r${DAYS * 86400}${liFilters()}` }], maxRowsPerUrl: R("linkedin"), rows: R("linkedin") })) },
   indeed:   { id: "valig/indeed-jobs-scraper", perItem: 0.0001, start: 0.001, runs: () => [{ country: "il", title: SEARCH, limit: R("indeed"), datePosted: NEAR(DAYS) }] },
   drushimapify: { id: "blackfalcondata/drushim-scraper", perItem: 0.002, start: 0.01, runs: () => [{ query: SEARCH, maxResults: HE ? half : ROWS, maxPages: 3 }, ...(HE ? [{ query: HE, maxResults: half, maxPages: 3 }] : [])] },
   alljobs:  { id: "getascraper/alljobs-scraper", perItem: 0.0018, runs: () => [{ keywords: [SEARCH, HE].filter(Boolean), maxItems: R("alljobs"), postedWithinDays: DAYS, detailMode: "always" }] },
@@ -50,7 +60,7 @@ const ACTORS = {
 };
 const FREE = {
   drushim: () => drushimFree([...new Set([SEARCH, HE, ...(entry.drushimQueries || [])].filter(Boolean))], { pages: 5 }), // 19 Nov: 3 -> 5 pages (75% of its 40+ jobs get sent). Drushim ranks by relevance, so breadth = freshness
-  careers: () => careersFree(),
+  careers: () => careersFree({ regions: REGIONS_SEL }),
 };
 for (const b of BOARDS) if (!ACTORS[b] && !FREE[b]) { console.log("unknown board:", b, "— use", [...Object.keys(ACTORS), ...Object.keys(FREE)].join(",")); process.exit(1); }
 const PAID = BOARDS.filter(b => ACTORS[b]), FREEB = BOARDS.filter(b => FREE[b]);

@@ -46,29 +46,38 @@ MIN_FIT = 40  # Assaf 19 Nov: threshold lowered 45 -> 40; a score under it goes 
 HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
 BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "jobmaster": "JobMaster", "careers": "דף קריירה"}
 
+# Assaf 21 Nov: pastel palette, ~75% blue / 25% green, set once here and used everywhere (CSS variables + chart colors)
+PAL = {"blue": "#8EBCE6", "blue_l": "#DCECF9", "green": "#A8D8C0", "green_l": "#E1F2E8",
+       "blue_ink": "#1d4f7f", "green_ink": "#1f5e43", "ink": "#12324f"}
 st.set_page_config(page_title="Job Scout", page_icon=":material/work:", layout="wide")
 st.markdown("""<style>
+:root{--js-blue:#8EBCE6;--js-blue-l:#DCECF9;--js-green:#A8D8C0;--js-green-l:#E1F2E8;--js-blue-ink:#1d4f7f;--js-green-ink:#1f5e43;--js-ink:#12324f}
+button[kind="primary"],button[kind="primaryFormSubmit"],[data-testid="stBaseButton-primary"],[data-testid="stBaseButton-primaryFormSubmit"]{color:var(--js-ink) !important;font-weight:600}
+[data-testid="stBaseButton-primary"]:hover{background:var(--js-green) !important;border-color:var(--js-green) !important}
+[data-testid="stBaseButton-pillsActive"],[data-testid="stBaseButton-segmented_controlActive"]{background:var(--js-green-l) !important;border-color:var(--js-green) !important;color:var(--js-green-ink) !important}
+.subfit{font-size:.68rem;color:#4b5563;text-align:center;margin-top:4px;line-height:1.25}
+.t-warn{color:#8a5a00;border-color:#f0d9a8;background:#fff8e8}.t-no{color:#5b6474;border-color:#dde1e8;background:#eef0f3}
 .block-container{max-width:1150px;padding-top:3.8rem}
 .stMainBlockContainer, .stMarkdown, .stCaption, [data-testid="stExpander"], [data-testid="stSidebarContent"]{direction:rtl;text-align:right}
-[data-testid="stMetric"]{background:#f6f8fb;border:1px solid #e6eaf0;border-radius:12px;padding:10px 14px}
+[data-testid="stMetric"]{background:var(--js-blue-l);border:1px solid var(--js-blue);border-radius:12px;padding:10px 14px}
 [data-testid="stMetricValue"]{font-size:1.6rem}
 .brand{font-weight:700;font-size:1.35rem;margin:-6px 0 10px}.brand small{display:block;font-weight:400;font-size:.78rem;color:#6b7280}
 .side-kpi{display:flex;justify-content:space-between;padding:5px 2px;border-bottom:1px solid #eef0f3;font-size:.88rem}.side-kpi b{font-weight:600}
 .fit{width:54px;height:54px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;
      font-family:ui-monospace,monospace;font-weight:700;font-size:1.25rem;line-height:1}
 .fit small{font-size:.58rem;font-weight:500;margin-top:3px;font-family:sans-serif}
-.f-hi{background:#e3f3ea;color:#16794a}.f-mid{background:#fbf0dc;color:#9a5b00}.f-lo{background:#e6effc;color:#1d4fa8}.f-na{background:#eef0f3;color:#5b6474}
-.jt{font-weight:600;font-size:1.05rem;line-height:1.35}.jt a{color:inherit;text-decoration:none}.jt a:hover{color:#2a55c9}
+.f-hi{background:var(--js-green-l);color:var(--js-green-ink)}.f-mid{background:var(--js-blue-l);color:var(--js-blue-ink)}.f-lo{background:#eef3f8;color:#4b6a88}.f-na{background:#eef0f3;color:#5b6474}
+.jt{font-weight:600;font-size:1.05rem;line-height:1.35}.jt a{color:inherit;text-decoration:none}.jt a:hover{color:var(--js-blue-ink)}
 .sub{color:#6b7280;font-size:.86rem;margin-top:1px}
 .tags{margin-top:4px}
 .tag{display:inline-block;font-size:.72rem;border:1px solid #dde1e8;border-radius:999px;padding:0 9px;margin:2px 0 0 4px;color:#5b6474;background:#fff}
-.t-new{background:#2a55c9;border-color:#2a55c9;color:#fff}.t-kw{color:#7a3fb0;border-color:#d9c3f0;background:#faf6fe}
-.t-ok{color:#16794a;border-color:#bfe3cd}.t-cv{color:#2a55c9;border-color:#c9d6f5;background:#f3f6fd;font-family:ui-monospace,monospace}
-details.why{margin-top:5px;font-size:.88rem;color:#374151}details.why summary{cursor:pointer;color:#2a55c9;font-size:.8rem;list-style:none}
+.t-new{background:var(--js-blue);border-color:var(--js-blue);color:var(--js-ink)}.t-kw{color:var(--js-blue-ink);border-color:var(--js-blue);background:var(--js-blue-l)}
+.t-ok{color:var(--js-green-ink);border-color:var(--js-green);background:var(--js-green-l)}.t-cv{color:var(--js-blue-ink);border-color:var(--js-blue);background:var(--js-blue-l);font-family:ui-monospace,monospace}
+details.why{margin-top:5px;font-size:.88rem;color:#374151}details.why summary{cursor:pointer;color:var(--js-blue-ink);font-size:.8rem;list-style:none}
 details.why summary::before{content:"▸ "}details.why[open] summary::before{content:"▾ "}
 .t-star{color:#9a5b00;border-color:#f0d9a8;background:#fff8e8}
 .warn{display:inline-block;margin-top:4px;font-size:.8rem;color:#9a5b00;background:#fff8e8;border:1px solid #f0d9a8;border-radius:6px;padding:1px 8px}
-.ai-h{font-weight:600;color:#7a3fb0}.ai-a{background:#faf6fe;border:1px solid #e6d6f5;border-radius:10px;padding:8px 12px;margin:4px 0 10px;white-space:pre-wrap}
+.ai-h{font-weight:600;color:var(--js-blue-ink)}.ai-a{background:var(--js-blue-l);border:1px solid var(--js-blue);border-radius:10px;padding:8px 12px;margin:4px 0 10px;white-space:pre-wrap}
 </style>""", unsafe_allow_html=True)
 
 
@@ -280,38 +289,154 @@ def cv_pool(kw, lang):
     return listed or [f for f in have if not re.search(r"cover|customer.?support|appointment|admin", f, re.I)]
 
 
-def score_job(j, kw):
+EMP_TYPES = ["Full-Time", "Part-Time", "Contract", "Freelance"]
+ARRANGEMENTS = ["Remote", "Hybrid", "On-site"]
+REGION_OPTS = {"IL": "ישראל", "EEA": "EEA / אירופה"}
+EMP_HE = {"Full-Time": "משרה מלאה", "Part-Time": "חלקית", "Contract": "חוזה / פרויקט", "Freelance": "פרילנס", "Unknown": "לא ידוע"}
+ARR_HE = {"Remote": "מרחוק", "Hybrid": "היברידי", "On-site": "מהמשרד", "Unknown": "לא ידוע"}
+ELIG_HE = {"eligible": "זכאי", "needs_verification": "דורש אימות", "not_eligible": "לא מתאים לתנאים"}
+SCORE_MODEL, TIE_MODEL = "claude-haiku-5-5", "claude-sonnet-5-5"  # Assaf 21 Nov: 2 independent Haiku reviews; Sonnet decides gaps > 10
+PRICE = {"claude-haiku-5-5": (0.10, 0.50), "claude-sonnet-5-5": (2.0, 10.0)}  # $ per 1M tokens in / out
+
+EVAL_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["requirements", "employment_type", "work_arrangement", "location", "professional_match", "eligibility_status",
+                 "eligibility_match", "verdict", "why_he", "gaps", "cv_file"],
+    "properties": {
+        "requirements": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                         "required": ["requirement", "kind", "status", "evidence"],
+                         "properties": {"requirement": {"type": "string"}, "kind": {"type": "string", "enum": ["must", "nice"]},
+                                        "status": {"type": "string", "enum": ["met", "partial", "missing", "unknown"]},
+                                        "evidence": {"type": "string"}}}},
+        "employment_type": {"type": "object", "additionalProperties": False, "required": ["value", "evidence"],
+                            "properties": {"value": {"type": "string", "enum": EMP_TYPES + ["Unknown"]}, "evidence": {"type": "string"}}},
+        "work_arrangement": {"type": "object", "additionalProperties": False, "required": ["value", "evidence"],
+                             "properties": {"value": {"type": "string", "enum": ARRANGEMENTS + ["Unknown"]}, "evidence": {"type": "string"}}},
+        "location": {"type": "object", "additionalProperties": False, "required": ["job_region", "allowed_work_from", "residency_or_permit", "evidence"],
+                     "properties": {"job_region": {"type": "string", "enum": ["Israel", "EEA", "Other", "Global", "Unknown"]},
+                                    "allowed_work_from": {"type": "string"}, "residency_or_permit": {"type": "string"},
+                                    "evidence": {"type": "string"}}},
+        "professional_match": {"type": "integer"},
+        "eligibility_status": {"type": "string", "enum": ["eligible", "needs_verification", "not_eligible"]},
+        "eligibility_match": {"type": "integer"},
+        "verdict": {"type": "string", "enum": ["Apply now", "Apply", "Maybe", "Skip"]},
+        "why_he": {"type": "string"},
+        "gaps": {"type": "array", "items": {"type": "string"}},
+        "cv_file": {"type": "string"},
+    },
+}
+TIE_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["disagreement", "professional_match", "eligibility_status", "eligibility_match", "verdict", "why_he", "gaps"],
+    "properties": {"disagreement": {"type": "string"}, "professional_match": {"type": "integer"},
+                   "eligibility_status": {"type": "string", "enum": ["eligible", "needs_verification", "not_eligible"]},
+                   "eligibility_match": {"type": "integer"}, "verdict": {"type": "string", "enum": ["Apply now", "Apply", "Maybe", "Skip"]},
+                   "why_he": {"type": "string"}, "gaps": {"type": "array", "items": {"type": "string"}}},
+}
+RUBRIC = """
+## Scoring method (documented, the same for every review)
+Candidate eligibility facts: lives in Tel Aviv, Israel. Israeli citizen AND Polish (EU) citizen: may work in Israel and anywhere in the EU/EEA without sponsorship. For a remote job run from abroad, check whether the employer hires people based in Israel (or via contractor/EOR); "Remote Europe" alone does not prove that someone living in Israel can be hired.
+
+1. requirements: list every requirement the POST states (max 12). kind = must (stated as required / must / X+ years) or nice (advantage / plus / preferred). status: met = the profile proves it; partial = related but weaker; missing = the post requires it and the profile proves he does not have it; unknown = the profile does not say. Evidence = a short quote from the post or the profile. A requirement the post does not state is NOT missing.
+2. professional_match 0-100 (skills, role, systems, experience only; ignore location and contract terms): start from role fit (same function and seniority = 70, adjacent = 50, different function = 20), then +up to 25 for met must-haves and nice-to-haves, -10 for each missing must-have (not for unknown), -5 per partial must-have. Cyber / information-security employer or role = 0.
+3. employment_type and work_arrangement: only what the post says (quote it). Not stated = Unknown. Never assume.
+4. location: job_region of the role itself; allowed_work_from = where the post allows the worker to be (or "not stated"); residency_or_permit = any residency / work-permit / time-zone limit (or "none stated").
+5. eligibility_status: not_eligible only when the post PROVES a hard conflict (e.g. must live in the US, on-site in Berlin with no relocation, local citizenship he lacks). needs_verification when something material is not stated. eligible when terms are clear and fit his facts. eligibility_match 0-100 follows: eligible 85-100, needs_verification 50-75, not_eligible 0-25.
+6. verdict follows professional_match and eligibility: Apply now (80+ and not not_eligible), Apply (60-79), Maybe (40-59), Skip (<40 or not_eligible).
+7. why_he: ONE short sentence in simple, natural Hebrew (max 18 words), male second person ("יש לך…"): the main reason it fits, then the main gap after "פער:". Tool names in English. Never state how many years or months he has. Hebrew letters, English and digits only.
+8. gaps: up to 4 short Hebrew items. cv_file: copy exactly one file name from the list given.
+"""
+
+
+def _client():
+    import anthropic
+    return anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"), max_retries=4)
+
+
+def _call(model, system, user, schema, effort="medium"):
+    r = _client().messages.create(model=model, max_tokens=16000, system=system, messages=[{"role": "user", "content": user}],
+                                  output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}})
+    if r.stop_reason == "refusal":
+        raise RuntimeError("refused")
+    text = next(b.text for b in r.content if getattr(b, "type", "") == "text")
+    pi, po = PRICE.get(model, (1, 5))
+    return json.loads(text), r.usage.input_tokens / 1e6 * pi + r.usage.output_tokens / 1e6 * po
+
+
+def _post_text(j, pool):
+    return "\n".join([
+        f"TODAY'S DATE: {dt.date.today()}", f"TITLE: {j['title']}", f"COMPANY: {j.get('company') or 'not stated'}",
+        f"LOCATION ON THE POST: {j.get('location') or 'not stated'}", f"SOURCE FIELDS: workplace={j.get('workplace') or 'n/a'}", "",
+        "FULL DESCRIPTION:", str(j.get("desc") or "")[:9000] or "(the post has no description text; judge from the title and company, most fields are Unknown)",
+        "", f"CV FILES TO CHOOSE FROM: {json.dumps(pool, ensure_ascii=False)}"])
+
+
+def apply_prefs(ev, prefs):
+    """Deterministic: the user's employment / arrangement / region choices decide eligibility on top of the model's reading."""
+    prefs = prefs or {}
+    notes, status = [], ev["eligibility_status"]
+    emp, arr, reg = ev["employment_type"]["value"], ev["work_arrangement"]["value"], ev["location"]["job_region"]
+    for val, want, he, label in [(emp, prefs.get("employment") or [], EMP_HE, "סוג העסקה"), (arr, prefs.get("arrangement") or [], ARR_HE, "אופי עבודה")]:
+        if want and val != "Unknown" and val not in want:
+            status = "not_eligible"
+            notes.append(f"{label} {he.get(val, val)} לא בהעדפות שלך")
+        elif want and val == "Unknown" and status == "eligible":
+            status = "needs_verification"
+            notes.append(f"{label} לא צוין, נדרשת בדיקה")
+    regions = prefs.get("regions") or ["IL"]
+    reg_map = {"Israel": "IL", "EEA": "EEA"}
+    if reg in reg_map and reg_map[reg] not in regions and "remote" not in str(ev["location"]["allowed_work_from"]).lower():
+        status = "not_eligible"
+        notes.append(f"המשרה ב-{reg}, מחוץ לאזורים שבחרת")
+    elif reg in ("Unknown", "Other", "Global") and status == "eligible":
+        status = "needs_verification"
+        notes.append("לא ברור מאיפה מותר לעבוד")
+    return status, notes
+
+
+def final_score(prof, status):
+    """Final Match Score: the professional match, capped when the terms do not fit (a strong CV match never hides a hard conflict)."""
+    prof = max(0, min(100, int(prof)))
+    return min(prof, 25) if status == "not_eligible" else prof
+
+
+def score_job(j, kw, prefs=None):
+    """Assaf 21 Nov: two independent reviews with the same documented rubric + a tie-break when they differ by more than 10."""
     lang = lang_of(j)
     pool = cv_pool(kw, lang)
-    user = "\n".join([
-        f"TODAY'S DATE: {dt.date.today()}", f"TITLE: {j['title']}", f"COMPANY: {j.get('company') or 'not stated'}",
-        f"LOCATION ON THE POST: {j.get('location') or 'Israel'}", "", "FULL DESCRIPTION:",
-        str(j.get("desc") or "")[:9000] or "(the post has no description text; judge from the title and company)", "",
-        "EXTRA FIELDS for this request, add them to the same JSON object:",
-        f'"cv_file": the ONE file from this list that best fits this job, copied exactly: {json.dumps(pool, ensure_ascii=False)}',
-        '"why_he": ONE short sentence in simple, natural, everyday Hebrew (max 18 words), speaking to Assaf in second person ("יש לך…", "חסר לך…"): '
-        'the main reason it fits, then the main gap after "פער:". Keep tool and product names in English (HubSpot, Braze, n8n). No odd or invented '
-        'Hebrew words; if unsure of a Hebrew word, use the plain English term. Male second person ("אתה", never "את"). NEVER state how many years or '
-        'months he has (no "9 חודשים", "7+ שנים") — those numbers are not known; you may quote what the POST requires ("דורשים 3 שנים"). '
-        "Hebrew letters, English and digits only.",
-        "HARD RULE: if the employer is a cybersecurity / information-security company, or the role is in cyber or security, set \"fit\" to 0.",
-    ])
-    for attempt in range(1, 6):
-        r = requests.post("https://api.anthropic.com/v1/messages", timeout=90, headers={
-            "x-api-key": secret("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            json={"model": "claude-haiku-4-5", "max_tokens": 1000, "system": BRAIN, "messages": [{"role": "user", "content": user}]})
-        if (r.status_code == 429 or r.status_code >= 500) and attempt < 5:
-            time.sleep(1.5 * attempt)
-            continue
-        r.raise_for_status()
-        b = r.json()
-        text = "".join(c.get("text", "") for c in b.get("content", []))
-        o = json.loads(text[text.index("{"): text.rindex("}") + 1])
-        u = b.get("usage", {})
-        return {"fit": max(0, min(100, round(float(o.get("fit") or 0)))), "verdict": o.get("verdict", ""),
-                "why": o.get("why_he") or o.get("one_line", ""), "gaps": o.get("gaps", []), "lang": lang,
-                "cv": o.get("cv_file") if o.get("cv_file") in pool else (pool[0] if pool else ""),
-                "usd": u.get("input_tokens", 0) / 1e6 + u.get("output_tokens", 0) / 1e6 * 5}
+    system = [{"type": "text", "text": BRAIN + "\n" + RUBRIC, "cache_control": {"type": "ephemeral"}}]
+    post = _post_text(j, pool)
+    a_user = post + "\n\nReview this post against the candidate with the scoring method. Return the JSON."
+    b_user = ("Independent second review. Do not assume any earlier score. Re-read the post from the top: first list every requirement "
+              "and decide whether each is truly a must-have or only nice-to-have; check for requirements a quick reading would over- or "
+              "under-weight; then score with the same method.\n\n" + post)
+    with ThreadPoolExecutor(2) as ex:
+        fa, fb = ex.submit(_call, SCORE_MODEL, system, a_user, EVAL_SCHEMA), ex.submit(_call, SCORE_MODEL, system, b_user, EVAL_SCHEMA)
+        (a, ua), (b, ub) = fa.result(), fb.result()
+    usd = ua + ub
+    tie = None
+    if abs(a["professional_match"] - b["professional_match"]) > 10 or abs(a["eligibility_match"] - b["eligibility_match"]) > 10:
+        t_user = (post + "\n\nTwo independent reviews of this post disagree by more than 10 points. REVIEW A:\n" + json.dumps(a, ensure_ascii=False)
+                  + "\n\nREVIEW B:\n" + json.dumps(b, ensure_ascii=False)
+                  + "\n\nExplain in Hebrew (disagreement, max 2 sentences) which requirements caused the gap and which reading the post supports. "
+                    "Decide the scores yourself from the post and the verified candidate facts, using the same method. Do not average.")
+        tie, ut = _call(TIE_MODEL, system, t_user, TIE_SCHEMA, effort="high")
+        usd += ut
+    base = a  # requirement list + extracted terms come from review A; the decision fields from the tie-break when there was one
+    dec = tie or {k: round((a[k] + b[k]) / 2) if k in ("professional_match", "eligibility_match") else a[k]
+                  for k in ("professional_match", "eligibility_match", "eligibility_status", "verdict", "why_he", "gaps")}
+    if not tie:  # close reviews: keep A's wording, take the stricter eligibility
+        order = ["not_eligible", "needs_verification", "eligible"]
+        dec["eligibility_status"] = min(a["eligibility_status"], b["eligibility_status"], key=order.index)
+    status, notes = apply_prefs({**base, "eligibility_status": dec["eligibility_status"]}, prefs)
+    final = final_score(dec["professional_match"], status)
+    compact = lambda e: {k: e[k] for k in ("professional_match", "eligibility_match", "eligibility_status", "verdict", "why_he")}
+    return {"fit": final, "pro": int(dec["professional_match"]), "elig": int(dec["eligibility_match"]), "elig_status": status, "elig_notes": notes,
+            "emp": base["employment_type"]["value"], "arr": base["work_arrangement"]["value"], "region": base["location"]["job_region"],
+            "loc_terms": {k: base["location"][k] for k in ("allowed_work_from", "residency_or_permit")},
+            "reqs": base["requirements"][:12], "verdict": dec["verdict"], "why": dec["why_he"], "gaps": dec["gaps"][:4], "lang": lang,
+            "cv": base["cv_file"] if base["cv_file"] in pool else (pool[0] if pool else ""),
+            "evals": {"a": compact(a), "b": compact(b), "tie": tie}, "flag": bool(tie), "usd": usd}
 
 
 def runs_today(s):
@@ -326,7 +451,28 @@ def archived(s, j):
     return any(urls & set(a.get("urls") or []) for a in s["archive"].values())
 
 
-def search_core(kw, hours, batch, report):
+SOURCES = {"linkedin": "LinkedIn", "alljobs": "AllJobs", "jobmaster": "JobMaster", "drushim": "דרושים", "careers": "דפי קריירה"}
+IL_SOURCES = {"alljobs", "jobmaster", "drushim"}
+EMP_ARG = {"Full-Time": "full", "Part-Time": "part", "Contract": "contract", "Freelance": "freelance"}
+ARR_ARG = {"Remote": "remote", "Hybrid": "hybrid", "On-site": "onsite"}
+DEFAULT_PREFS = {"regions": ["IL"], "employment": [], "arrangement": [], "sources": list(SOURCES)}
+
+
+def prefs_of(s):
+    """Assaf 21 Nov: search preferences saved with the data (regions, employment type, work arrangement, sources)."""
+    return {**DEFAULT_PREFS, **(settings_of(s).get("search_prefs") or {})}
+
+
+def engine_args(prefs):
+    a = ["--regions", ",".join(prefs.get("regions") or ["IL"]), "--boards", ",".join(prefs.get("sources") or list(SOURCES))]
+    if prefs.get("arrangement"):
+        a += ["--wt", ",".join(ARR_ARG[x] for x in prefs["arrangement"] if x in ARR_ARG)]
+    if prefs.get("employment"):
+        a += ["--jt", ",".join(EMP_ARG[x] for x in prefs["employment"] if x in EMP_ARG)]
+    return a
+
+
+def search_core(kw, hours, batch, report, prefs=None):
     """One keyword, no Streamlit calls (runs in a background thread). report(phase, **extra) updates the live view."""
     days = hours // 24 if hours in (24, 48, 72) else 7
     report("pulling")
@@ -339,13 +485,20 @@ def search_core(kw, hours, batch, report):
     env = {**os.environ, "APIFY_API_TOKEN": secret("APIFY_API_TOKEN", ""), "JOBENGINE_SERVER": "1", "JOBENGINE_RUNS_DIR": tempfile.gettempdir(),
            "JOBSCOUT_ATS_EXTRA": str(extra_path)}
     test_free = ["--free"] if os.environ.get("JOBSCOUT_TEST_FREE") == "1" else []  # local test only: free sources, no Apify
-    p = subprocess.run(["node", str(APP / "engine/mini-agent/scout.mjs"), kw, "--out", out, "--days", str(days), *test_free],
+    prefs = prefs or DEFAULT_PREFS
+    p = subprocess.run(["node", str(APP / "engine/mini-agent/scout.mjs"), kw, "--out", out, "--days", str(days), *engine_args(prefs), *test_free],
                        cwd=str(APP / "engine"), env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
     if p.returncode != 0:
         report("error", error=(p.stdout + p.stderr)[-600:])
         return
     found = json.loads(Path(out, "results-full.json").read_text(encoding="utf-8"))
-    stats = json.loads(Path(out, "results.json").read_text(encoding="utf-8")).get("stats", {})  # per source: pulled / dropped / kept
+    res_meta = json.loads(Path(out, "results.json").read_text(encoding="utf-8"))
+    stats = res_meta.get("stats", {})  # per source: pulled / dropped / kept
+    src_errors = {}  # a failed source never stops the others (engine catches per source); remember what failed
+    for r in res_meta.get("runLog", []):
+        if r.get("error") or r.get("status") in ("FAILED", "ABORTED", "TIMED-OUT"):
+            src_errors[r.get("board", "?")] = str(r.get("error") or r.get("status"))[:120]
+    report("sources", sources={b: {"pulled": v.get("pulled", 0), "kept": v.get("kept", 0)} for b, v in stats.items()}, source_errors=src_errors)
     try:  # careers boards found during this search → private repo, used from the next search on
         ats_extra_add(json.loads(Path(out, "ats-new.json").read_text(encoding="utf-8")))
     except Exception:
@@ -364,7 +517,7 @@ def search_core(kw, hours, batch, report):
     report("scoring", found=len(found), new=len(fresh))
     scores, usd = {}, 0.0
     with ThreadPoolExecutor(8) as ex:
-        futs = {ex.submit(score_job, j, kw): k for k, j in fresh}
+        futs = {ex.submit(score_job, j, kw, prefs): k for k, j in fresh}
         for i, f in enumerate(as_completed(futs), 1):
             k = futs[f]
             try:
@@ -407,7 +560,7 @@ def search_core(kw, hours, batch, report):
         auto = len(blocked) + sum(1 for k, j in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
         autoc["n"] = auto
         runs =[{"kw": kw, "hours": hours or None, "at": now, "batch": batch, "found": len(found), "new": len(fresh), "autoRemoved": auto,
-                 "stats": stats, "keys": keys, "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:499]
+                 "stats": stats, "sourceErrors": src_errors, "prefs": prefs, "keys": keys, "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:499]
         for r in runs:  # history keeps the job list for 72 hours only
             if r.get("keys") and r["at"] < cutoff:
                 r.pop("keys")
@@ -417,17 +570,17 @@ def search_core(kw, hours, batch, report):
     report("done", new=len(fresh), auto=autoc.get("n", 0), usd=round(usd, 3))
 
 
-def start_batch(kws, hours):
+def start_batch(kws, hours, prefs=None):
     """Start a multi-keyword search in the background (3 keywords at a time) and return its id."""
     batch = uuid.uuid4().hex[:10]
-    info = {"kws": list(kws), "hours": hours, "started": time.time(), "kw": {k: {"phase": "queued"} for k in kws}, "done": False}
+    info = {"kws": list(kws), "hours": hours, "prefs": prefs, "started": time.time(), "kw": {k: {"phase": "queued"} for k in kws}, "done": False}
     SH["batches"][batch] = info
 
     def run_one(k):
         def report(phase, **extra):
             info["kw"][k] = {**info["kw"][k], "phase": phase, **extra}
         try:
-            search_core(k, hours, batch, report)
+            search_core(k, hours, batch, report, prefs)
         except Exception as e:
             report("error", error=str(e)[:300])
 
@@ -459,7 +612,7 @@ NEW12 = ["מיישם פתרונות ai", "ai implementation", "ai solutions", "a
          "product operations", "crm product", "lifecycle marketing", "טרנספורמציה דיגיטלית", "מנהל חדשנות", "מנהל מערכות שיווק"]
 USD_PER_KW = 0.25  # measured 18 Nov: Apify ~$0.16 + Claude ~$0.09 per keyword
 AGE = {"all": "הכל", "1": "יום", "3": "3 ימים", "7": "שבוע", "older": "מעל שבוע"}
-PHASE = {"queued": "ממתין", "pulling": "מושך משרות", "scoring": "מדרג", "done": "הסתיים", "error": "נכשל"}
+PHASE = {"queued": "ממתין", "pulling": "מושך משרות", "sources": "המקורות סיימו", "scoring": "מדרג", "done": "הסתיים", "error": "נכשל"}
 
 
 def lbl(k):
@@ -583,6 +736,20 @@ def batch_view(info, compact=False):
             extra = str(v.get("error", ""))[:80]
         rows.append({"": {"done": "✅", "error": "⚠️"}.get(v.get("phase"), "⏳"), "מילה": lbl(k), "שלב": PHASE.get(v.get("phase"), v.get("phase")), "פרטים": extra})
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    # Assaf 21 Nov: status per source, summed over the keywords that finished pulling
+    src = {}
+    for v in info["kw"].values():
+        for b, c in (v.get("sources") or {}).items():
+            o = src.setdefault(b, {"pulled": 0, "kept": 0, "errors": 0})
+            o["pulled"] += c.get("pulled", 0)
+            o["kept"] += c.get("kept", 0)
+        for b in (v.get("source_errors") or {}):
+            src.setdefault(b, {"pulled": 0, "kept": 0, "errors": 0})["errors"] += 1
+    if src:
+        st.caption("לפי מקור (כל המילים שסיימו)")
+        st.dataframe(pd.DataFrame([{"מקור": BOARD.get(b, b), "סטטוס": "⚠️ נכשל ב-" + str(o["errors"]) + " מילים" if o["errors"] else "✅ תקין",
+                                    "נשלפו": o["pulled"], "נכנסו אחרי סינון": o["kept"]} for b, o in sorted(src.items(), key=lambda x: -x[1]["kept"])]),
+                     hide_index=True, width="stretch")
 
 
 def progress_live(compact=False):
@@ -708,13 +875,33 @@ def card(j, new=False):
         tags += '<span class="tag t-ok">Easy Apply</span>'
     if cv:
         tags += f'<span class="tag t-cv">קו״ח {"עב" if j.get("lang") == "he" else "EN"}: {cv.replace(".pdf", "")}</span>'
+    # Assaf 21 Nov: verified scoring - terms + eligibility shown on the card, both reviews in the details
+    if j.get("elig_status"):
+        cls = {"eligible": "t-ok", "needs_verification": "t-warn", "not_eligible": "t-no"}.get(j["elig_status"], "")
+        tags += f'<span class="tag {cls}">{ELIG_HE.get(j["elig_status"], j["elig_status"])}</span>'
+        tags += f'<span class="tag">{EMP_HE.get(j.get("emp"), j.get("emp"))} · {ARR_HE.get(j.get("arr"), j.get("arr"))}</span>'
+        if j.get("flag"):
+            tags += '<span class="tag t-kw">⚖️ הוכרע</span>'
     why = j.get("why") or (f"הדירוג נכשל: {j['scoreError']}" if j.get("scoreError") else "")
     gaps = j.get("gaps") or []
     more = ("<br>" + " · ".join(str(g) for g in gaps[:3])) if gaps else ""
+    if j.get("pro") is not None:
+        ev = j.get("evals") or {}
+        icon = {"met": "✅", "partial": "🟡", "missing": "❌", "unknown": "❔"}
+        reqs = "".join(f"<li>{icon.get(q.get('status'), '')} {q.get('requirement')} {'(חובה)' if q.get('kind') == 'must' else ''}</li>"
+                       for q in (j.get("reqs") or [])[:8])
+        lt = j.get("loc_terms") or {}
+        more += (f"<br><b>מקצועי {j['pro']} · זכאות {j.get('elig')} · סופי {fit}</b>"
+                 + (" · " + " · ".join(j.get("elig_notes") or []) if j.get("elig_notes") else "")
+                 + f"<br>מותר לעבוד מ: {lt.get('allowed_work_from', '?')} · מגבלות: {lt.get('residency_or_permit', '?')}"
+                 + (f"<ul style='margin:4px 0'>{reqs}</ul>" if reqs else "")
+                 + f"<span class='sub'>הערכה א׳ {ev.get('a', {}).get('professional_match')} · הערכה ב׳ {ev.get('b', {}).get('professional_match')}"
+                 + (f" · הכרעה: {ev['tie'].get('disagreement')}" if ev.get("tie") else "") + "</span>")
     with st.container(border=True):
         c0, c1, c2 = st.columns([0.35, 0.9, 10], vertical_alignment="top")
         c0.checkbox("בחר", key=f"sel-{k}", label_visibility="collapsed")
-        c1.markdown(f'<div class="fit {fit_cls(fit)}">{fit if fit is not None else "—"}<small>התאמה</small></div>', unsafe_allow_html=True)
+        c1.markdown(f'<div class="fit {fit_cls(fit)}">{fit if fit is not None else "—"}<small>התאמה</small></div>'
+                    + (f'<div class="subfit">מקצועי {j["pro"]}<br>זכאות {j.get("elig")}</div>' if j.get("pro") is not None else ""), unsafe_allow_html=True)
         c2.markdown(
             f'<div class="jt"><a href="{j.get("url")}" target="_blank">{j.get("title")}</a></div>'
             f'<div class="sub">{j.get("company") or "—"} · {j.get("location") or "ישראל"} · {ago(j)}</div>'
@@ -739,14 +926,9 @@ def card(j, new=False):
                     mark_many([k], "removed", block=True)
                     st.rerun()
         a1.link_button("פתח והגש ↗", j.get("url") or "#", type="primary", width="stretch")
-        if cv and st.session_state.get("cv_open") == k:
-            try:
-                a2.download_button("⬇ הורד", cv_bytes(j.get("lang", "en"), cv), file_name=cv, mime="application/pdf", key=f"d-{k}", width="stretch")
-            except Exception:
-                a2.caption("הקובץ לא נמצא")
-        elif cv and a2.button("קו״ח", key=f"c-{k}", width="stretch"):
-            st.session_state.cv_open = k
-            st.rerun()
+        if a2.button("📝 קו״ח", key=f"c-{k}", width="stretch", help="הורדת קו״ח והתאמה למשרה הזאת"):
+            st.session_state.tailor_job = k  # Assaf 21 Nov: download + tailor live on the "התאמת קו״ח" page
+            st.switch_page(PAGES["tailor"])
         if a3.button("✓ שלחתי", key=f"s-{k}", width="stretch"):
             mark_many([k], "sent")
             st.rerun()
@@ -954,6 +1136,43 @@ def _preset(keys):
         st.session_state[f"kwg_{i}"] = [k for k in items if k in keys]
 
 
+def prefs_panel(s):
+    """Assaf 21 Nov: search terms kept apart from keywords: region, employment type, work arrangement, sources. Saved with the data."""
+    p = prefs_of(s)
+    for key, val in (("pf_regions", p["regions"]), ("pf_emp", p["employment"]), ("pf_arr", p["arrangement"]), ("pf_src", p["sources"])):
+        st.session_state.setdefault(key, list(val))
+    with st.container(border=True):
+        st.markdown("##### תנאים ומקורות")
+        c1, c2 = st.columns(2)
+        regions = c1.pills("אזור", list(REGION_OPTS), format_func=REGION_OPTS.get, selection_mode="multi", key="pf_regions") or []
+        arr = c2.pills("אופי עבודה (ריק = הכל)", ARRANGEMENTS, format_func=ARR_HE.get, selection_mode="multi", key="pf_arr") or []
+        emp = c1.pills("סוג העסקה (ריק = הכל)", EMP_TYPES, format_func=EMP_HE.get, selection_mode="multi", key="pf_emp") or []
+
+        def _all_src():
+            st.session_state.pf_src = list(SOURCES)
+        c2.button("בחר את כל המקורות", on_click=_all_src, key="pf_src_all")
+        src = st.pills("מקורות", list(SOURCES), format_func=SOURCES.get, selection_mode="multi", key="pf_src") or []
+        notes = []
+        if not regions:
+            notes.append("בחר לפחות אזור אחד.")
+        if regions == ["EEA"] and set(src) & IL_SOURCES:
+            notes.append("AllJobs, JobMaster ודרושים הם לוחות ישראליים, ולא ירוצו כשנבחר רק EEA.")
+        if "EEA" in regions:
+            notes.append("ב-EEA: LinkedIn (האיחוד האירופי) ודפי הקריירה של 206 החברות עם משרות באירופה. אתה אזרח פולני, ולכן זכאי לעבוד באיחוד; בכל משרה נבדק אם המעסיק מאפשר עבודה מישראל.")
+        if emp or arr:
+            notes.append("ב-LinkedIn הסינון נעשה כבר בחיפוש. בשאר המקורות Claude קורא את המשרה; מה שלא כתוב בה מסומן \"דורש אימות\".")
+        for n in notes:
+            st.caption(n)
+    new = {"regions": regions or ["IL"], "employment": emp, "arrangement": arr, "sources": src or list(SOURCES)}
+    return new
+
+
+def save_prefs(new):
+    def m(st_):
+        settings_of(st_)["search_prefs"] = new
+    update_state(m, "search prefs")
+
+
 def page_search():
     s, _ = load_state()
     cap = int(secret("MAX_SEARCHES_PER_DAY", 30))
@@ -973,6 +1192,7 @@ def page_search():
                         SH["batches"][b]["closed"] = True
                     st.rerun()
 
+    prefs = prefs_panel(s)
     st.markdown("##### מילות חיפוש")
     p = st.columns(5)
     p[0].button(f"⭐ מומלצות ({len(RECOMMENDED)})", on_click=_preset, args=(RECOMMENDED,), width="stretch", type="primary",
@@ -1002,7 +1222,9 @@ def page_search():
         if over:
             st.warning(f"בחרת {len(kws)} מילים, אבל נשארו היום רק {max(0, left)} חיפושים. הקטן את הבחירה או העלה את MAX_SEARCHES_PER_DAY ב-Secrets.")
         if st.button(f"🔍 חפש {len(kws)} מילים · {WINDOWS[win]}", type="primary", disabled=running or not kws or over, width="stretch"):
-            st.session_state.batch = start_batch(kws, win)
+            if prefs != prefs_of(s):
+                save_prefs(prefs)  # the choices stay for the next visit
+            st.session_state.batch = start_batch(kws, win, prefs)
             st.session_state.pop("hist", None)
             st.rerun()
         if running:
@@ -1450,8 +1672,8 @@ RESEARCH_SCHEMA = {
         "open_questions": {"type": "array", "items": {"type": "string"}},
     },
 }
-TONE = {"good": ("#e6f4ec", "#16794a"), "warn": ("#fdf3e1", "#8a5a00"), "info": ("#eaf0fc", "#2a55c9")}
-ACTION = {"boost": ("⬆ להגביר", "#e6f4ec", "#16794a"), "keep": ("✓ להשאיר", "#eaf0fc", "#2a55c9"),
+TONE = {"good": (PAL["green_l"], PAL["green_ink"]), "warn": ("#fdf3e1", "#8a5a00"), "info": (PAL["blue_l"], PAL["blue_ink"])}
+ACTION = {"boost": ("⬆ להגביר", PAL["green_l"], PAL["green_ink"]), "keep": ("✓ להשאיר", PAL["blue_l"], PAL["blue_ink"]),
           "watch": ("👁 לעקוב", "#fdf3e1", "#8a5a00"), "drop": ("⬇ להוריד", "#eef0f3", "#5b6474")}
 LEVEL = {"high": "גבוהה", "medium": "בינונית", "low": "נמוכה"}
 
@@ -1532,7 +1754,7 @@ def research_block(s):
             st.info("עוד אין דוח. לחץ \"צור דוח\".")
         return
     funnel, kw, src, bands = research_charts(s)
-    st.markdown(f"<div style='background:#eaf0fc;border-right:5px solid #2a55c9;border-radius:10px;padding:12px 16px;font-size:1.05rem;"
+    st.markdown(f"<div style='background:var(--js-blue-l);border-right:5px solid var(--js-blue);border-radius:10px;padding:12px 16px;font-size:1.05rem;"
                 f"font-weight:600;color:#1d3f8f;margin:6px 0 12px'>🧭 {d['headline']}</div>", unsafe_allow_html=True)
     if d["kpis"]:
         cols = st.columns(len(d["kpis"][:6]))
@@ -1541,20 +1763,20 @@ def research_block(s):
             c.markdown(_card(bg, fg, k["value"], k["note"], k["label"]), unsafe_allow_html=True)
 
     st.markdown("###### המשפך")
-    st.bar_chart(funnel, horizontal=True, color="#2a55c9", height=190)
+    st.bar_chart(funnel, horizontal=True, color=PAL["blue"], height=190)
 
     t1, t2, t3, t4 = st.tabs(["✅ מה עובד", "⚠️ מה לא עובד", "🔁 דפוסים", "🎯 המלצות"])
     with t1:
         c1, c2 = st.columns([1, 1.2])
         for w in d["works"]:
-            c1.markdown(_card("#e6f4ec", "#16794a", w["title"], w["detail"], w["metric"]), unsafe_allow_html=True)
+            c1.markdown(_card(PAL["green_l"], PAL["green_ink"], w["title"], w["detail"], w["metric"]), unsafe_allow_html=True)
             c1.write("")
         if not kw.empty:
             c2.caption("הגשות לפי מילת חיפוש")
-            c2.bar_chart(kw.set_index("מילה")[["נשלחו"]].sort_values("נשלחו"), horizontal=True, color="#16794a", height=360)
+            c2.bar_chart(kw.set_index("מילה")[["נשלחו"]].sort_values("נשלחו"), horizontal=True, color=PAL["green"], height=360)
         if not src.empty:
             c2.caption("הגשות לפי מקור")
-            c2.bar_chart(src.set_index("מקור")[["נשלחו"]].sort_values("נשלחו"), horizontal=True, color="#2a55c9", height=200)
+            c2.bar_chart(src.set_index("מקור")[["נשלחו"]].sort_values("נשלחו"), horizontal=True, color=PAL["blue"], height=200)
     with t2:
         c1, c2 = st.columns([1, 1.2])
         for w in d["not_working"]:
@@ -1562,14 +1784,14 @@ def research_block(s):
             c1.write("")
         if not kw.empty:
             c2.caption(f"אחוז המשרות עם ציון {MIN_FIT}+ לפי מילה (נמוך = הרבה רעש)")
-            c2.bar_chart(kw.set_index("מילה")[[f"% {MIN_FIT}+"]].sort_values(f"% {MIN_FIT}+"), horizontal=True, color="#7a3fb0", height=360)
+            c2.bar_chart(kw.set_index("מילה")[[f"% {MIN_FIT}+"]].sort_values(f"% {MIN_FIT}+"), horizontal=True, color=PAL["blue"], height=360)
     with t3:
         c1, c2 = st.columns([1, 1.2])
         for p in d["patterns"]:
-            c1.markdown(_card("#eaf0fc", "#2a55c9", p["title"], p["detail"]), unsafe_allow_html=True)
+            c1.markdown(_card(PAL["blue_l"], PAL["blue_ink"], p["title"], p["detail"]), unsafe_allow_html=True)
             c1.write("")
         c2.caption("כמה אחוז מהמשרות שסימנת שלחת, לפי ציון")
-        c2.bar_chart(bands, color="#2a55c9", height=260)
+        c2.bar_chart(bands, color=PAL["blue"], height=260)
     with t4:
         order = {"high": 0, "medium": 1, "low": 2}
         for r in sorted(d["recommendations"], key=lambda r: (order.get(r["impact"], 3), order.get(r["effort"], 3) * -1)):
@@ -1641,13 +1863,13 @@ def optimization_block(s):
             first, today = min(days), dt.datetime.now(IL).date()
             rng = [first + dt.timedelta(days=i) for i in range((today - first).days + 1)]
             c1.caption(f"הגשות ביום (יעד {int(secret('DAILY_GOAL', 50))}) · ימים בלי עמודה = לא היו חיפושים")
-            c1.bar_chart(pd.DataFrame({"הגשות": [days.get(d, 0) for d in rng]}, index=[d.strftime("%d.%m") for d in rng]), color="#2a55c9", height=240)
+            c1.bar_chart(pd.DataFrame({"הגשות": [days.get(d, 0) for d in rng]}, index=[d.strftime("%d.%m") for d in rng]), color=PAL["blue"], height=240)
         rows = []
         for lo, hi, name in [(MIN_FIT, 55, f"{MIN_FIT}–54"), (55, 65, "55–64"), (65, 75, "65–74"), (75, 101, "75+")]:
             b = [j for j in scored if lo <= j["fit"] < hi and status(j) in ("sent", "removed")]
             rows.append({"ציון": name, "% שנשלחו": _pct(sum(1 for j in b if status(j) == "sent"), len(b)), "משרות שסימנת": len(b)})
         c2.caption("אחוז הגשה לפי ציון: הציון מנבא מה תשלח")
-        c2.bar_chart(pd.DataFrame(rows).set_index("ציון")[["% שנשלחו"]], color="#16794a", height=240)
+        c2.bar_chart(pd.DataFrame(rows).set_index("ציון")[["% שנשלחו"]], color=PAL["green"], height=240)
     with t3:
         src = {}
         for j in jobs.values():
@@ -1661,9 +1883,9 @@ def optimization_block(s):
             df["% נשלחו מ-" + f"{MIN_FIT}+"] = [_pct(a, b) for a, b in zip(df["הגשות"], df[f"{MIN_FIT}+"])]
             c1, c2 = st.columns(2)
             c1.caption("הגשות לפי מקור")
-            c1.bar_chart(df.set_index("מקור")[["הגשות"]], horizontal=True, color="#2a55c9", height=240)
+            c1.bar_chart(df.set_index("מקור")[["הגשות"]], horizontal=True, color=PAL["blue"], height=240)
             c2.caption(f"אחוז הגשה מתוך משרות {MIN_FIT}+ (גבוה = מקור מדויק)")
-            c2.bar_chart(df.set_index("מקור")[["% נשלחו מ-" + f"{MIN_FIT}+"]], horizontal=True, color="#16794a", height=240)
+            c2.bar_chart(df.set_index("מקור")[["% נשלחו מ-" + f"{MIN_FIT}+"]], horizontal=True, color=PAL["green"], height=240)
     with t4:
         reasons = {"ציון מתחת לסף": 0, "מילים / חברות חסומות": 0, "סייבר": 0}
         for a in arc.values():
@@ -1672,13 +1894,13 @@ def optimization_block(s):
         cfg = settings_of(s)
         c1, c2 = st.columns([1.3, 1])
         c1.caption("משרות שהוסרו אוטומטית, לפי סיבה")
-        c1.bar_chart(pd.DataFrame({"משרות": list(reasons.values())}, index=list(reasons)), horizontal=True, color="#7a3fb0", height=200)
+        c1.bar_chart(pd.DataFrame({"משרות": list(reasons.values())}, index=list(reasons)), horizontal=True, color=PAL["blue"], height=200)
         c2.markdown(f"- **{len(cfg['exclude_words'])}** מילים לסינון\n- **{len(cfg['blocked_companies'])}** חברות חסומות\n"
                     f"- **{len((DICT.get('_exclude') or {}).get('companies', []))}** חברות סייבר במנוע\n- תמיד נשאר: **GTM**"
                     + (f", {', '.join(cfg['keep_words'])}" if [w for w in cfg["keep_words"] if w.upper() != "GTM"] else ""))
     good_rate = _pct(len(sent), len(good))
     need = int(secret("DAILY_GOAL", 50)) / max(0.01, good_rate / 100)
-    st.markdown(f"<div style='background:#eaf0fc;border-right:5px solid #2a55c9;border-radius:10px;padding:10px 14px;margin:8px 0 4px;color:#1d3f8f'>"
+    st.markdown(f"<div style='background:var(--js-blue-l);border-right:5px solid var(--js-blue);border-radius:10px;padding:10px 14px;margin:8px 0 4px;color:#1d3f8f'>"
                 f"🧭 <b>הצעד הבא:</b> אתה שולח ל-{good_rate}% מהמשרות הטובות, ולכן כדי להגיע ל-{int(secret('DAILY_GOAL', 50))} הגשות ביום צריך כ-{need:.0f} "
                 f"משרות עם ציון {MIN_FIT}+ בכל יום. הדרך לשם: \"⭐ מומלצות\" פעמיים ביום, בלי ימים מדולגים.</div>", unsafe_allow_html=True)
 
@@ -1725,12 +1947,278 @@ def page_stats():
     st.caption("עלות משוערת: כ-$0.25 לכל מילת חיפוש (Apify כ-$0.16 + Claude כ-$0.09).")
 
 
+LEVELS = ["Basic", "Familiarity", "Intermediate", "Advanced", "Expert"]
+LEVEL_HE = {"Basic": "בסיסי", "Familiarity": "היכרות", "Intermediate": "בינוני", "Advanced": "מתקדם", "Expert": "מומחה"}
+TAILOR_MODEL = "claude-opus-5-5"
+ANALYZE_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["ats_keywords", "must_haves", "gaps", "skills_to_confirm", "recommendations"],
+    "properties": {
+        "ats_keywords": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["keyword", "in_cv", "required_by_post"],
+                         "properties": {"keyword": {"type": "string"}, "in_cv": {"type": "boolean"}, "required_by_post": {"type": "boolean"}}}},
+        "must_haves": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["requirement", "coverage", "evidence_in_cv"],
+                       "properties": {"requirement": {"type": "string"}, "coverage": {"type": "string", "enum": ["covered", "partial", "missing"]},
+                                      "evidence_in_cv": {"type": "string"}}}},
+        "gaps": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["type", "item", "suggestion"],
+                 "properties": {"type": {"type": "string", "enum": ["keyword", "system", "skill", "experience", "wording", "format"]},
+                                "item": {"type": "string"}, "suggestion": {"type": "string"}}}},
+        "skills_to_confirm": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["skill", "why_relevant"],
+                              "properties": {"skill": {"type": "string"}, "why_relevant": {"type": "string"}}}},
+        "recommendations": {"type": "array", "items": {"type": "string"}},
+    },
+}
+TAILOR_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["name_line", "headline", "summary", "experience", "skills", "other_sections", "changes"],
+    "properties": {
+        "name_line": {"type": "string"}, "headline": {"type": "string"}, "summary": {"type": "string"},
+        "experience": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["role", "company", "dates", "bullets"],
+                       "properties": {"role": {"type": "string"}, "company": {"type": "string"}, "dates": {"type": "string"},
+                                      "bullets": {"type": "array", "items": {"type": "string"}}}}},
+        "skills": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["name", "level"],
+                   "properties": {"name": {"type": "string"}, "level": {"type": "string"}}}},
+        "other_sections": {"type": "string"},
+        "changes": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["section", "change", "reason"],
+                    "properties": {"section": {"type": "string"}, "change": {"type": "string"}, "reason": {"type": "string"}}}},
+    },
+}
+TAILOR_RULES = (
+    "HARD RULES: Use ONLY facts written in the ORIGINAL CV or in CONFIRMED SKILLS. Never invent experience, roles, employers, dates, achievements, "
+    "systems, numbers or percentages. Keep every employer, title and date exactly as in the original. You may reorder, rephrase, shorten, choose "
+    "which facts to highlight and use the post's terms for things he really did. A confirmed skill is written with its level (e.g. 'Salesforce - "
+    "Familiarity'). Never mention what he lacks or did not do (no gap disclosure). Write in the same language as the original CV. "
+    "Do not promise ATS results.")
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cv_text(lang, name):
+    import io as _io
+    from pypdf import PdfReader
+    return "\n".join((p.extract_text() or "") for p in PdfReader(_io.BytesIO(cv_bytes(lang, name))).pages).strip()
+
+
+def _tailor_call(user, schema, effort="medium"):
+    import anthropic
+    client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"), max_retries=3)
+    with client.beta.messages.stream(model=TAILOR_MODEL, max_tokens=32000, messages=[{"role": "user", "content": user}],
+                                     output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+                                     betas=["server-side-fallback-2026-07-01"], fallbacks="default") as stream:
+        r = stream.get_final_message()
+    if r.stop_reason == "refusal":
+        raise RuntimeError("Claude declined")
+    return json.loads(next(b.text for b in r.content if getattr(b, "type", "") == "text"))
+
+
+def _job_block(j):
+    return (f"JOB TITLE: {j.get('title')}\nCOMPANY: {j.get('company')}\nLOCATION: {j.get('location')}\n"
+            f"JOB DESCRIPTION:\n{j.get('desc') or '(full text not saved; use the title, company and these requirements)'}\n"
+            f"REQUIREMENTS FROM THE EARLIER REVIEW: {json.dumps([q.get('requirement') for q in (j.get('reqs') or [])], ensure_ascii=False)}")
+
+
+def tailored_md(t):
+    out = [f"# {t['name_line']}", f"**{t['headline']}**", "", "## Summary" if not re.search(r"[֐-׿]", t["summary"]) else "## תקציר", t["summary"], ""]
+    out.append("## Experience" if not re.search(r"[֐-׿]", t["summary"]) else "## ניסיון")
+    for e in t["experience"]:
+        out += [f"### {e['role']} · {e['company']} · {e['dates']}"] + [f"- {b}" for b in e["bullets"]] + [""]
+    if t["skills"]:
+        out += ["## Skills" if not re.search(r"[֐-׿]", t["summary"]) else "## כישורים",
+                " · ".join(f"{x['name']} ({x['level']})" if x.get("level") else x["name"] for x in t["skills"]), ""]
+    if t["other_sections"].strip():
+        out += [t["other_sections"].strip()]
+    return "\n".join(out).strip()
+
+
+def new_numbers(orig, new):
+    """Guard against invented numbers: every number in the new version must appear in the original."""
+    nums = lambda x: set(re.findall(r"\d[\d,.]*\+?%?", x))
+    return sorted(n for n in nums(new) - nums(orig) if not re.fullmatch(r"(19|20)\d\d", n.strip(".,")))
+
+
+def kw_cover(text, kws):
+    t = text.lower()
+    hit = [k for k in kws if k.lower() in t]
+    return hit, (round(100 * len(hit) / len(kws)) if kws else 0)
+
+
+def docx_bytes(md):
+    import io as _io
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    d = Document()
+    rtl = bool(re.search(r"[֐-׿]", md))
+    for line in md.splitlines():
+        if line.startswith("### "):
+            p = d.add_heading(line[4:], level=3)
+        elif line.startswith("## "):
+            p = d.add_heading(line[3:], level=2)
+        elif line.startswith("# "):
+            p = d.add_heading(line[2:], level=1)
+        elif line.startswith("- "):
+            p = d.add_paragraph(line[2:], style="List Bullet")
+        elif line.strip():
+            p = d.add_paragraph(line.replace("**", ""))
+        else:
+            continue
+        if rtl:
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    buf = _io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+def diff_html(a, b):
+    import difflib
+    import html as _h
+    out = []
+    for op in difflib.ndiff(a.splitlines(), b.splitlines()):
+        tag, line = op[:2], _h.escape(op[2:])
+        if tag == "+ ":
+            out.append(f"<div style='background:#E1F2E8;padding:1px 6px'>+ {line}</div>")
+        elif tag == "- ":
+            out.append(f"<div style='background:#f3f4f6;color:#6b7280;text-decoration:line-through;padding:1px 6px'>− {line}</div>")
+        elif tag == "  " and line.strip():
+            out.append(f"<div style='padding:1px 6px;color:#374151'>{line}</div>")
+    return "<div style='font-size:.85rem;max-height:520px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px'>" + "".join(out) + "</div>"
+
+
+def page_tailor():
+    """Assaf 21 Nov: tailor a CV to one job. The original PDF is never changed; the new version is downloaded as Word / Markdown."""
+    s, _ = load_state()
+    cand = sorted([j for j in s["jobs"].values() if (s["archive"].get(j["key"]) or {}).get("status") in (None, "sent")],
+                  key=lambda j: (-(j.get("fit") or 0)))
+    if not cand:
+        st.info("אין משרות פתוחות. התאמת קו״ח פועלת על משרה מהתיבה.")
+        return
+    keys = [j["key"] for j in cand]
+    pre = st.session_state.get("tailor_job")
+    k = st.selectbox("משרה", keys, index=keys.index(pre) if pre in keys else 0,
+                     format_func=lambda x: f"{s['jobs'][x].get('fit', '—')} · {s['jobs'][x].get('title')} · {s['jobs'][x].get('company')}", key="tailor_pick")
+    j = s["jobs"][k]
+    lang = j.get("lang", "en")
+    files = cv_files(lang) or cv_files("en")
+    base = st.selectbox("קורות החיים המקוריים", files, index=files.index(j["cv"]) if j.get("cv") in files else 0, key=f"tailor_cv_{k}")
+    try:
+        orig = cv_text(lang if base in cv_files(lang) else "en", base)
+    except Exception as e:
+        st.info(f"לא הצלחתי לקרוא את הקובץ: {str(e)[:150]}", icon="⚠️")
+        return
+    a, b = st.columns(2)
+    a.download_button("⬇ הורד את המקור", cv_bytes(lang if base in cv_files(lang) else "en", base), file_name=base, mime="application/pdf", width="stretch")
+    b.link_button("פתח את המשרה ↗", j.get("url") or "#", width="stretch")
+    if not j.get("desc"):
+        st.caption("תיאור המשרה המלא לא נשמר למשרה הזאת. הניתוח יתבסס על הכותרת ועל הדרישות שזוהו בדירוג.")
+    S = st.session_state.setdefault("tailor", {}).setdefault(f"{k}|{base}", {})
+
+    st.markdown("##### 1 · ניתוח פערים")
+    if st.button("🔍 נתח את קורות החיים מול המשרה", type="primary", key="t_an"):
+        with st.spinner("Claude מנתח… (כחצי דקה)"):
+            try:
+                S["an"] = _tailor_call(_job_block(j) + "\n\nORIGINAL CV:\n" + orig + "\n\nAnalyse this CV against this job for Assaf (answer texts in Hebrew, "
+                                       "keywords as written in the post). ats_keywords: 10-25 terms from the post (systems, skills, role terms) and whether the CV "
+                                       "has each. must_haves: the post's required items and how the CV covers them. gaps: missing keywords, systems not "
+                                       "highlighted, unclear abilities, experience to bring forward, wording, format problems for ATS. skills_to_confirm: "
+                                       "tools/skills the post wants that the CV does not show - he must confirm a level before any is added. "
+                                       "recommendations: 3-6 concrete edits. " + TAILOR_RULES, ANALYZE_SCHEMA)
+                S.pop("t", None)
+            except Exception as e:
+                st.info(f"הניתוח נכשל: {str(e)[:200]}", icon="⚠️")
+    an = S.get("an")
+    if not an:
+        st.caption("כ-$0.05–0.10 לניתוח. המקור לא משתנה.")
+        return
+    kws = [x["keyword"] for x in an["ats_keywords"]]
+    hit, pct = kw_cover(orig, kws)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("מילות מפתח מהמשרה במקור", f"{pct}%", f"{len(hit)}/{len(kws)}", delta_color="off")
+    mh = an["must_haves"]
+    m2.metric("דרישות חובה מכוסות", f"{sum(1 for x in mh if x['coverage'] == 'covered')}/{len(mh)}")
+    m3.metric("פערים שזוהו", len(an["gaps"]))
+    with st.expander("פירוט: דרישות חובה, פערים והמלצות", expanded=True):
+        ic = {"covered": "✅", "partial": "🟡", "missing": "❌"}
+        st.markdown("\n".join(f"- {ic[x['coverage']]} **{x['requirement']}** · {x['evidence_in_cv']}" for x in mh))
+        st.markdown("**פערים**\n" + "\n".join(f"- `{x['type']}` **{x['item']}** · {x['suggestion']}" for x in an["gaps"]))
+        st.markdown("**המלצות**\n" + "\n".join(f"- {r}" for r in an["recommendations"]))
+        st.markdown("**מילות מפתח:** " + " ".join(f"<span class='tag {'t-ok' if x['in_cv'] else 't-warn'}'>{x['keyword']}</span>" for x in an["ats_keywords"]),
+                    unsafe_allow_html=True)
+
+    st.markdown("##### 2 · אישור מיומנויות")
+    saved = settings_of(s).get("skill_levels") or {}
+    levels = {}
+    if an["skills_to_confirm"]:
+        st.caption("מיומנות נכנסת לגרסה המותאמת רק אם אישרת רמה אמיתית. ברירת המחדל: לא להוסיף.")
+        for x in an["skills_to_confirm"]:
+            opts = ["לא להוסיף"] + LEVELS
+            cur = saved.get(x["skill"])
+            levels[x["skill"]] = st.selectbox(f"{x['skill']} · {x['why_relevant']}", opts, index=opts.index(cur) if cur in opts else 0,
+                                              format_func=lambda o: LEVEL_HE.get(o, o) + (f" ({o})" if o in LEVEL_HE else ""), key=f"lvl_{k}_{x['skill']}")
+    else:
+        st.caption("אין מיומנויות שדורשות אישור.")
+    confirmed = {sk: lv for sk, lv in {**saved, **levels}.items() if lv in LEVELS}
+
+    st.markdown("##### 3 · גרסה מותאמת")
+    if st.button("✍️ צור גרסה מותאמת", type="primary", key="t_gen"):
+        if levels:
+            new_saved = {**saved, **{sk: lv for sk, lv in levels.items() if lv in LEVELS}}
+            if new_saved != saved:
+                update_state(lambda st_: settings_of(st_).__setitem__("skill_levels", new_saved), "skill levels")
+        with st.spinner("Claude כותב את הגרסה… (כדקה)"):
+            try:
+                t = _tailor_call(_job_block(j) + "\n\nORIGINAL CV:\n" + orig + f"\n\nCONFIRMED SKILLS (name: level): {json.dumps(confirmed, ensure_ascii=False)}"
+                                 + "\n\nGAP ANALYSIS:\n" + json.dumps(an, ensure_ascii=False)
+                                 + "\n\nWrite a tailored version of this CV for this job: headline and summary aimed at the post, every role kept with its "
+                                   "employer/title/dates, bullets re-ordered and rephrased in the post's terms using only true facts, skills list (with levels for "
+                                   "confirmed skills), other sections (education, languages) copied as they are. changes: what you changed and why (Hebrew). "
+                                 + TAILOR_RULES, TAILOR_SCHEMA, effort="high")
+                S["t"] = t
+                S["md"] = tailored_md(t)
+                st.session_state[f"t_edit_{k}|{base}"] = S["md"]
+            except Exception as e:
+                st.info(f"היצירה נכשלה: {str(e)[:200]}", icon="⚠️")
+    if not S.get("t"):
+        st.caption("כ-$0.10–0.20 לגרסה.")
+        return
+    t = S["t"]
+    warn = new_numbers(orig, S["md"])
+    if warn:
+        st.info("מספרים שמופיעים בגרסה ולא במקור, צריך לבדוק או למחוק: " + ", ".join(warn), icon="⚠️")
+    t1, t2, t3, t4 = st.tabs(["✏️ עריכה", "🔀 שינויים מול המקור", "📊 בדיקת ATS", "📝 מה שונה ולמה"])
+    with t1:
+        edited = st.text_area("הגרסה המותאמת (אפשר לערוך)", key=f"t_edit_{k}|{base}", height=520)
+        e1, e2, e3 = st.columns(3)
+        stem = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{base.replace('.pdf', '')}-{j.get('company') or 'job'}")[:80]
+        e1.download_button("⬇ Word", docx_bytes(edited), file_name=f"{stem}.docx", width="stretch", type="primary",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        e2.download_button("⬇ Markdown", edited.encode("utf-8"), file_name=f"{stem}.md", width="stretch")
+        if e3.button("💾 שמור לאפליקציה", width="stretch", help="נשמר עם המשרה, כדי לחזור אליו אחר כך"):
+            update_state(lambda st_: st_.setdefault("tailored", {}).__setitem__(k, {"at": dt.datetime.now(dt.timezone.utc).isoformat(), "cv": base, "text": edited}),
+                         f"tailored cv: {k}")
+            st.success("נשמר")
+    with t2:
+        st.caption("ירוק = נוסף או נוסח מחדש · אפור מחוק = הוסר מהמקור")
+        st.markdown(diff_html(orig, st.session_state.get(f"t_edit_{k}|{base}", S["md"])), unsafe_allow_html=True)
+    with t3:
+        cur = st.session_state.get(f"t_edit_{k}|{base}", S["md"])
+        hit2, pct2 = kw_cover(cur, kws)
+        req_kws = [x["keyword"] for x in an["ats_keywords"] if x["required_by_post"]]
+        r1, r2 = kw_cover(orig, req_kws)[1], kw_cover(cur, req_kws)[1]
+        c1, c2, c3 = st.columns(3)
+        c1.metric("כיסוי מילות מפתח", f"{pct2}%", f"{pct2 - pct:+d} מול המקור")
+        c2.metric("כיסוי מילים מהדרישות", f"{r2}%", f"{r2 - r1:+d} מול המקור")
+        c3.metric("מספרים לבדיקה", len(new_numbers(orig, cur)))
+        miss = [x for x in kws if x not in hit2]
+        st.markdown("**עדיין חסרות:** " + (", ".join(miss) if miss else "אין"))
+        st.caption("בדיקת כיסוי וקריאות בלבד. אין הבטחה שמערכת ATS כלשהי תעביר את קורות החיים.")
+    with t4:
+        st.markdown("\n".join(f"- **{c['section']}**: {c['change']} · {c['reason']}" for c in t["changes"]))
+
+
 # ---------------- app shell ----------------
 state, _ = load_state()
 PAGES = {
     "inbox": st.Page(page_inbox, title="משרות", icon=":material/inbox:", url_path="inbox", default=True),
     "search": st.Page(page_search, title="חיפוש חדש", icon=":material/search:", url_path="search"),
     "stats": st.Page(page_stats, title="סטטיסטיקה", icon=":material/insights:", url_path="stats"),  # Assaf 19 Nov: above search history
+    "tailor": st.Page(page_tailor, title="התאמת קו״ח", icon=":material/edit_document:", url_path="tailor"),
     "history": st.Page(page_history, title="היסטוריית חיפושים", icon=":material/history:", url_path="history"),
     "companies": st.Page(page_companies, title="חברות", icon=":material/apartment:", url_path="companies"),
     "filters": st.Page(page_filters, title="סינון", icon=":material/block:", url_path="filters"),
