@@ -1099,6 +1099,31 @@ def _gen_text(j, kind):
     return t[:290] if kind == "note" else t
 
 
+def _cover_docx(text, rtl):
+    """Plain Word letter: the edited text, paragraphs kept, right-to-left for Hebrew."""
+    import io
+    from docx import Document
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Pt
+    d = Document()
+    d.styles["Normal"].font.name = "Calibri"
+    d.styles["Normal"].font.size = Pt(11)
+    for para in [x for x in text.split("\n\n") if x.strip()] or [text]:
+        p = d.add_paragraph(para.strip())
+        p.paragraph_format.space_after = Pt(10)
+        if rtl:
+            pPr = p._p.get_or_add_pPr()
+            pPr.append(OxmlElement("w:bidi"))
+            p.alignment = 2
+            for r in p.runs:
+                rPr = r._r.get_or_add_rPr()
+                rPr.append(OxmlElement("w:rtl"))
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
 def _gen_panel(j, kind):
     k = j["key"]
     G = st.session_state.setdefault("gen", {})
@@ -1116,7 +1141,12 @@ def _gen_panel(j, kind):
                 st.warning(f"הכתיבה נכשלה: {str(e)[:150]}")
     if gk in G:
         st.text_area("טקסט", value=G[gk], height=200 if kind == "cover" else 100, key=f"gt-{gk}", label_visibility="collapsed")
+        txt = st.session_state.get(f"gt-{gk}", G[gk])
         st.caption("ערוך כאן, ואז סמן והעתק. הטקסט לא נשלח לשום מקום.")
+        if kind == "cover":
+            fn = "Cover-Letter-" + re.sub(r"[^A-Za-z0-9]+", "-", str(j.get("company") or "job")).strip("-") + ".docx"
+            st.download_button("⬇ הורד כ-Word", _cover_docx(txt, j.get("lang") == "he"), file_name=fn, key=f"gd-{gk}", width="stretch",
+                               mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 
 def block_actions(sel, where):
