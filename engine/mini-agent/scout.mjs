@@ -33,7 +33,7 @@ const ROWS_DEFAULT = { linkedin: 70, alljobs: 40, jobmaster: 70, indeed: 70 }; /
 const R = b => (flag("rows", false) ? ROWS : ROWS_DEFAULT[b] || ROWS);
 const BOARDS_ASKED = String(flag("free", false) ? "drushim,careers" : flag("boards", "linkedin,drushim,alljobs,jobmaster,careers")).split(",").map(s => s.trim()).filter(Boolean);
 const BOARDS = BOARDS_ASKED.filter(b => !["drushim", "alljobs", "jobmaster", "drushimapify", "indeed"].includes(b) || String(flag("regions", "IL")).toUpperCase().includes("IL")) // Israeli boards only when Israel is selected
-  .filter(b => !["workable", "himalayas", "remotive", "remoteok", "arbeitnow"].includes(b) || String(flag("regions", "IL")).toUpperCase().includes("EEA")); // remote / EEA boards only when EEA is selected
+  .filter(b => !["workable", "himalayas", "remotive", "remoteok", "arbeitnow", "upwork", "gofractional", "remoteagg"].includes(b) || String(flag("regions", "IL")).toUpperCase().includes("EEA")); // remote / EEA boards only when EEA is selected
 const DRY = !!flag("dry", false), MATCH = !!flag("match", false), ALL_TITLES = !!flag("all-titles", false);
 const REPLAY = flag("replay", "");
 // 21 Nov: where (IL / EEA), how (remote / hybrid / onsite) and what contract (full / part / contract / freelance) — terms, not keywords
@@ -57,6 +57,10 @@ const ACTORS = {
   indeed:   { id: "valig/indeed-jobs-scraper", perItem: 0.0001, start: 0.001, runs: () => [{ country: "il", title: SEARCH, limit: R("indeed"), datePosted: NEAR(DAYS) }] },
   drushimapify: { id: "blackfalcondata/drushim-scraper", perItem: 0.002, start: 0.01, runs: () => [{ query: SEARCH, maxResults: HE ? half : ROWS, maxPages: 3 }, ...(HE ? [{ query: HE, maxResults: half, maxPages: 3 }] : [])] },
   alljobs:  { id: "getascraper/alljobs-scraper", perItem: 0.0018, runs: () => [{ keywords: [SEARCH, HE].filter(Boolean), maxItems: R("alljobs"), postedWithinDays: DAYS, detailMode: "always" }] },
+  // 21 Nov (Assaf OK): paid remote / project sources, only with EEA. Inputs verified in the 21 Nov test; every run is capped.
+  upwork: { id: "blackfalcondata/upwork-scraper", perItem: 0.001, start: 0.001, runs: () => [{ query: 'n8n OR "AI agent" OR "marketing automation" OR "product manager"', sort: "recency", experienceLevel: "ExpertLevel", verifiedPaymentOnly: true, maxAgeMinutes: DAYS * 1440, skipReposts: true, descriptionFormat: "text", maxResults: 40 }] },
+  gofractional: { id: "getascraper/gofractional-scraper", perItem: 0.002, start: 0.001, runs: () => [{ scrapeMode: "jobs", searchQuery: "product", vertical: "product", enrichDetails: true, maxItems: 10, proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"], apifyProxyCountry: "US" } }] },
+  remoteagg: { id: "memo23/remote-jobs-aggregator", perItem: 0.002, start: 0.0001, runs: () => [{ searchKeyword: SEARCH, timeFilter: DAYS <= 1 ? "24h" : DAYS <= 7 ? "7d" : "30d", includeDescription: true, maxItems: 50 }] },
   jobmaster:{ id: "getascraper/jobmaster-scraper", perItem: 0.0015, runs: () => [{ searchQueries: [SEARCH, HE].filter(Boolean), maxItems: R("jobmaster"), maxItemsPerQuery: HE ? Math.ceil(R("jobmaster") / 2) : R("jobmaster"), sortBy: "newest" }] },
 };
 const FREE = {
@@ -92,6 +96,9 @@ const NORM = {
     const title = crumb(j.title), co = String(j.companyName || j.company || "");
     const company = j.isConfidentialCompany || co.includes("»") || crumb(co) === title ? "(חסוי)" : co;
     return { title, company, location: j.location, posted: iso(j.postedAt), url: j.url, desc: [j.description, j.requirements].filter(Boolean).join("\n") }; },
+  upwork: j => ({ title: j.title, company: "", location: "Remote, worldwide", posted: iso(j.publishTime || j.createTime), url: j.url, desc: String(j.description || ""), workplace: "remote", region: "EEA", project: true }),
+  gofractional: j => ({ title: j.title, company: j.companyName, location: "Remote" + (j.country ? ", " + j.country : ""), posted: iso(j.createdAt), url: j.url, desc: String(j.jobDescription || ""), workplace: j.remote ? "remote" : "", region: "EEA", project: true }),
+  remoteagg: j => ({ title: j.title, company: j.companyName, location: "Remote, " + ((j.applicantCountries || []).join(" / ") || j.location || "anywhere"), posted: iso(j.postedDate), url: j.applyUrl || j.url, desc: String(j.descriptionText || j.description || "").replace(/<[^>]+>/g, " "), workplace: "remote", region: "EEA", _countries: j.applicantCountries || [] }),
   jobmaster:j => ({ title: j.title, company: j.companyName, location: j.location, posted: relDays(j.postedRelative), url: j.url, desc: [j.descriptionText, j.requirementsText].filter(Boolean).join("\n") }),
 };
 
@@ -135,7 +142,7 @@ const CYBER_T = wordRx(EXC.titles), CYBER_C = wordRx(EXC.companies), CYBER_I = w
 const isCyber = (j, it = {}) => CYBER_T.test(j.title || "") || CYBER_C.test(j.company || "") || CYBER_I.test([it.sector, ...(it.companyIndustries ? [].concat(it.companyIndustries) : [])].join(" "));
 // Hebrew boards write vague titles ("מנהל/ת E-commerce") and put the substance in the description:
 // there a "maybe" title passes when the description names at least 2 different terms from the keyword's list.
-const DESC_BOARDS = new Set(["linkedin", "drushim", "drushimapify", "alljobs", "jobmaster"]); // linkedin too: its search matches descriptions
+const DESC_BOARDS = new Set(["linkedin", "drushim", "drushimapify", "alljobs", "jobmaster", "upwork", "gofractional", "remoteagg"]); // linkedin too: its search matches descriptions
 const FAMILY = /שיווק|marketing|דיגיט|digital|crm|מוצר|product|לקוחות|customer|e-?commerce|growth|אוטומצ|automation|מערכות|\bai\b|בינה מלאכותית|gtm|revops|פרויקט|project|מאמן|trainer|תיוג/i;
 const core = [KW, SEARCH, HE].filter(Boolean).map(rx);
 const descOk = d => { d = String(d || ""); return core.some(r => r.test(d)) || includes.filter(r => r.test(d)).length >= 3; };
@@ -211,6 +218,7 @@ for (const b of BOARDS) {
     // Assaf 19 Nov: a job with "GTM" in the title or the description always stays (any keyword, no title/dev/QA filter); cyber, location and age still apply
     if (GTM_RX.test(j.title || "") || GTM_RX.test(j.desc || "")) j.gtm = true;
     if (!ALL_TITLES && !j.gtm && !relevant(b, j)) { s.title++; continue; }
+    if (j._countries?.length && !/worldwide|anywhere|global|europe|emea|eu|eea|israel|austria|belgium|bulgaria|croatia|cyprus|czech|denmark|estonia|finland|france|germany|greece|hungary|ireland|italy|latvia|lithuania|luxembourg|malta|netherlands|poland|portugal|romania|slovakia|slovenia|spain|sweden|norway|iceland/i.test(j._countries.join(" "))) { s.loc++; continue; } // memo23: applicant countries must include Europe / worldwide
     if (!locOk(j)) { s.loc++; continue; }
     if (!daysOk(j)) { s.days++; continue; }
     s.kept++;

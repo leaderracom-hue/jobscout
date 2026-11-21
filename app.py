@@ -45,7 +45,8 @@ WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע
 MIN_FIT = 40  # Assaf 19 Nov: threshold lowered 45 -> 40; a score under it goes straight to the archive ("auto") and is never shown
 HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
 BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "jobmaster": "JobMaster", "careers": "דף קריירה",
-         "workable": "Workable", "himalayas": "Himalayas", "remotive": "Remotive", "remoteok": "RemoteOK", "arbeitnow": "Arbeitnow"}
+         "workable": "Workable", "himalayas": "Himalayas", "remotive": "Remotive", "remoteok": "RemoteOK", "arbeitnow": "Arbeitnow",
+         "upwork": "Upwork", "gofractional": "GoFractional", "remoteagg": "Remote aggregator"}
 
 # Assaf 21 Nov: pastel palette, ~75% blue / 25% green, set once here and used everywhere (CSS variables + chart colors)
 PAL = {"blue": "#8EBCE6", "blue_l": "#DCECF9", "green": "#A8D8C0", "green_l": "#E1F2E8",
@@ -504,8 +505,10 @@ def archived(s, j):
 
 SOURCES = {"linkedin": "LinkedIn", "alljobs": "AllJobs", "jobmaster": "JobMaster", "drushim": "דרושים", "careers": "דפי קריירה",
            # 21 Nov: free remote / EEA APIs (run only when EEA is selected)
-           "workable": "Workable", "himalayas": "Himalayas", "remotive": "Remotive", "remoteok": "RemoteOK", "arbeitnow": "Arbeitnow"}
-EEA_SOURCES = {"workable", "himalayas", "remotive", "remoteok", "arbeitnow"}
+           "workable": "Workable", "himalayas": "Himalayas", "remotive": "Remotive", "remoteok": "RemoteOK", "arbeitnow": "Arbeitnow",
+           # paid (Apify), EEA only: projects and remote aggregator
+           "upwork": "Upwork (פרויקטים)", "gofractional": "GoFractional", "remoteagg": "Remote aggregator"}
+EEA_SOURCES = {"workable", "himalayas", "remotive", "remoteok", "arbeitnow", "upwork", "gofractional", "remoteagg"}
 IL_SOURCES = {"alljobs", "jobmaster", "drushim"}
 EMP_ARG = {"Full-Time": "full", "Part-Time": "part", "Contract": "contract", "Freelance": "freelance"}
 ARR_ARG = {"Remote": "remote", "Hybrid": "hybrid", "On-site": "onsite"}
