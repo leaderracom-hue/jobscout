@@ -1012,7 +1012,7 @@ def card(j, new=False):
                     mark_many([k], "removed", block=True)
                     st.rerun()
         a1.link_button("פתח והגש ↗", j.get("url") or "#", type="primary", width="stretch")
-        if a2.button("📝 קו״ח", key=f"c-{k}", width="stretch", help="הורדת קו״ח והתאמה למשרה הזאת"):
+        if a2.button("📝 התאם קו״ח", key=f"c-{k}", width="stretch", help="התאמת קורות החיים למשרה הזאת (עמוד התאמת קו״ח)"):
             st.session_state.tailor_job = k  # Assaf 21 Nov: download + tailor live on the "התאמת קו״ח" page
             st.switch_page(PAGES["tailor"])
         if a3.button("✓ שלחתי", key=f"s-{k}", width="stretch"):
@@ -1025,8 +1025,54 @@ def card(j, new=False):
         if a5.button("✨ שאל את Claude" if not open_ask else "סגור את Claude", key=f"ask-{k}", width="stretch"):
             st.session_state.ask_open = None if open_ask else k
             st.rerun()
+        g1, g2, _g = c2.columns([1.6, 1.6, 4])
+        for col, kind, label in ((g1, "cover", "✍️ מכתב מקדים"), (g2, "note", "💬 הערה אישית")):
+            with col.popover(label, width="stretch"):
+                _gen_panel(j, kind)
     if st.session_state.get("ask_open") == k:
         ask_panel(j)
+
+
+GEN_RULES = ("Rules: write as Assaf (AI and marketing-automation product manager; n8n, workflow automation, Salesforce, Dynamics 365), human and plain, "
+             "no invented numbers or claims, never mention what he lacks or has not done, no flattery, no links, do not mention a CV or attachment. "
+             "Use only what the job text supports.")
+
+
+def _gen_text(j, kind):
+    import anthropic
+    he = j.get("lang") == "he"
+    client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"), max_retries=3)
+    if kind == "cover":
+        ask = (f"Write a cover letter of about 100 words in {'Hebrew' if he else 'English'} for the role below. Open with why this role, then one or two concrete "
+               "matches between his experience and the job, then a short close. ")
+    else:
+        ask = ("Write a short personal note (max 280 characters) in " + ("Hebrew" if he else "English") + " to send to the person who posted this role "
+               "(LinkedIn connection note or a first message). Say he saw the role and one concrete reason it fits. ")
+    r = client.messages.create(model="claude-haiku-5-5", max_tokens=900, messages=[{"role": "user", "content": (
+        f"Role: {j.get('title')} at {j.get('company')} ({j.get('location')})\nJob text: {(j.get('desc') or j.get('why') or '')[:2200]}\n\n" + ask + GEN_RULES +
+        " Return only the text.")}])
+    t = "".join(b.text for b in r.content if b.type == "text").strip()
+    return t[:290] if kind == "note" else t
+
+
+def _gen_panel(j, kind):
+    k = j["key"]
+    G = st.session_state.setdefault("gen", {})
+    gk = f"{k}|{kind}"
+    title = "מכתב מקדים (כ-100 מילים)" if kind == "cover" else "הערה אישית (עד 300 תווים)"
+    st.markdown(f"**{title}**")
+    if not j.get("desc"):
+        st.caption("תיאור המשרה המלא לא נשמר. הטקסט יתבסס על הכותרת ועל הסיבות לציון.")
+    if st.button("צור" if gk not in G else "צור מחדש", key=f"gb-{gk}", type="primary", width="stretch"):
+        with st.spinner("Claude כותב…"):
+            try:
+                G[gk] = _gen_text(j, kind)
+                st.session_state.pop(f"gt-{gk}", None)
+            except Exception as e:
+                st.warning(f"הכתיבה נכשלה: {str(e)[:150]}")
+    if gk in G:
+        st.text_area("טקסט", value=G[gk], height=200 if kind == "cover" else 100, key=f"gt-{gk}", label_visibility="collapsed")
+        st.caption("ערוך כאן, ואז סמן והעתק. הטקסט לא נשלח לשום מקום.")
 
 
 def block_actions(sel, where):
@@ -2358,6 +2404,7 @@ def _out_save(k, patch):
 
 
 def _out_draft(j, contact):
+    import anthropic
     client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"), max_retries=3)
     schema = {"type": "object", "additionalProperties": False, "required": ["subject", "email", "connect_note"],
               "properties": {"subject": {"type": "string"}, "email": {"type": "string"}, "connect_note": {"type": "string"}}}
