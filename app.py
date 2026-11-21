@@ -608,6 +608,8 @@ def search_core(kw, hours, batch, report, prefs=None):
             st_["jobs"][k] = {"key": k, "title": j["title"], "company": j.get("company"), "location": j.get("location"),
                               "posted": j.get("posted"), "dayOnly": bool(j.get("dayOnly")), "url": j.get("url"), "links": j.get("links"),
                               "boards": j.get("boards", []), "easyApply": bool(j.get("easyApply")), "kws": [kw], "foundAt": now, **scores.get(k, {})}
+            if j.get("poster"):
+                st_["jobs"][k]["poster"] = str(j["poster"])[:80]  # 21 Nov: LinkedIn job poster, used by direct outreach
             fit = scores.get(k, {}).get("fit")
             if (fit is None or fit >= MIN_FIT) and j.get("desc"):  # kept while the job is open, for "Ask Claude"
                 st_["jobs"][k]["desc"] = str(j["desc"])[:3000]
@@ -978,8 +980,11 @@ def card(j, new=False):
             + f'<div class="tags">{tags}</div>'
             + (f'<details class="why"><summary>למה זה מתאים</summary>{why}{more}</details>' if why else ""),
             unsafe_allow_html=True)
-        a1, a2, a3, a4, a5, a6 = c2.columns([2, 1.1, 1.2, 1.1, 1.6, 0.9])
+        a1, a2, a3, a4, a5, a6, a7 = c2.columns([2, 1.1, 1.2, 1.1, 1.6, 0.9, 1.2])
         co = j.get("company") or ""
+        if "linkedin" in (j.get("boards") or []) and a7.button("✉️ פנייה", key=f"out-{k}", width="stretch", help="מציאת איש קשר, מייל מאומת וטיוטה לאישור"):
+            st.session_state.outreach_job = k
+            st.switch_page(PAGES["outreach"])
         with a6.popover("🚫", help="חסימת החברה", width="stretch"):
             if not company_key(co):
                 st.caption("אי אפשר לחסום משרה בלי שם חברה")
@@ -2285,6 +2290,166 @@ def page_tailor():
         st.markdown("\n".join(f"- **{c['section']}**: {c['change']} · {c['reason']}" for c in t["changes"]))
 
 
+def _out_save(k, patch):
+    def m(s):
+        s.setdefault("outreach", {}).setdefault(k, {}).update(patch)
+    update_state(m, f"outreach {k[:30]}")
+
+
+def _out_draft(j, contact):
+    client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"), max_retries=3)
+    schema = {"type": "object", "additionalProperties": False, "required": ["subject", "email", "connect_note"],
+              "properties": {"subject": {"type": "string"}, "email": {"type": "string"}, "connect_note": {"type": "string"}}}
+    r = client.messages.create(
+        model="claude-haiku-5-5", max_tokens=1200,
+        output_config={"format": {"type": "json_schema", "schema": schema}},
+        messages=[{"role": "user", "content": (
+            "Write a short cold outreach from Assaf, a product manager for AI and marketing automation (n8n, workflow automation, Salesforce, Dynamics 365), "
+            f"to {contact or 'the hiring contact'} at {j.get('company')} about the open role '{j.get('title')}'.\n"
+            f"Job description (excerpt): {(j.get('desc') or '')[:1500]}\n\n"
+            "Rules: English, human and plain, 60-90 words, no links, no mention of a CV or attachment, never mention what Assaf lacks or has not done, "
+            "no invented numbers or claims, no flattery, no 'I hope this finds you well'. Say he saw the role, one concrete line on why he fits "
+            "from the description, and offer to share more if relevant. Sign 'Assaf'. connect_note: LinkedIn connection note, max 280 characters, same tone.")}])
+    d = json.loads("".join(b.text for b in r.content if b.type == "text"))
+    d["connect_note"] = d["connect_note"][:290]
+    return d
+
+
+def page_outreach():
+    """Assaf 21 Nov: find the poster, find + verify the email, review the drafts. Nothing is sent from here: the email opens in
+    his own Gmail compose window, the LinkedIn note is copied by hand. Paid steps run only on a click."""
+    import outreach as OUT
+    s, _ = load_state()
+    cand = [j for j in s["jobs"].values() if "linkedin" in (j.get("boards") or []) and (s["archive"].get(j["key"]) or {}).get("status") in (None, "sent")]
+    cand.sort(key=lambda j: -(j.get("fit") or 0))
+    if not cand:
+        st.info("אין משרות LinkedIn פתוחות.")
+        return
+    keys = [j["key"] for j in cand]
+    pre = st.session_state.get("outreach_job")
+    k = st.selectbox("משרה", keys, index=keys.index(pre) if pre in keys else 0,
+                     format_func=lambda x: f"{s['jobs'][x].get('fit', '—')} · {s['jobs'][x].get('title')} · {s['jobs'][x].get('company')}", key="out_pick")
+    j = s["jobs"][k]
+    O = {**(s.get("outreach", {}).get(k) or {}), **st.session_state.setdefault("out", {}).get(k, {})}
+
+    def put(**kw):
+        st.session_state["out"].setdefault(k, {}).update(kw)
+        O.update(kw)
+
+    st.link_button("פתח את המשרה ב-LinkedIn ↗", j.get("url") or "#")
+    st.markdown("##### 1 · איש קשר")
+    c1, c2 = st.columns(2)
+    name = c1.text_input("שם", value=O.get("name") or j.get("poster") or "", key=f"on-{k}",
+                         help="מפרסם המשרה כפי ש-LinkedIn החזיר. ריק = אין מפרסם, אפשר לחפש איש גיוס.")
+    domain = c2.text_input("דומיין החברה", value=O.get("domain") or OUT.guess_domain(j.get("company")), key=f"od-{k}")
+    sp_key = secret("SMARTLEAD_API_KEY")
+    if not name and sp_key and st.button("🔎 חפש אנשי גיוס בחברה (SmartProspect, חינם)", key=f"osp-{k}"):
+        try:
+            res = OUT.sp_search(sp_key, j.get("company") or "", domain)
+            put(people=res["people"][:8], filter_id=res["filter_id"])
+        except Exception as e:
+            st.warning(f"החיפוש נכשל: {str(e)[:150]}")
+    if O.get("people") and not name:
+        pick = st.radio("נמצאו", [f"{p['name']} · {p['title']}" for p in O["people"]], key=f"opk-{k}")
+        st.caption("בחר ולחץ 'השתמש'. הכתובת לא נחשפת עד שתלחץ על חיפוש המייל.")
+        if st.button("השתמש באיש הקשר הזה", key=f"ouse-{k}"):
+            put(name=pick.split(" · ")[0])
+            st.session_state.pop(f"on-{k}", None)  # let the text box take the new value
+            st.rerun()
+    if not name:
+        return
+
+    st.markdown("##### 2 · מייל ואימות")
+    email = st.text_input("מייל", value=O.get("email") or "", key=f"oe-{k}", help="אפשר להדביק מייל שמצאת ידנית ולאמת אותו.")
+    mv_key = secret("MILLIONVERIFIER_API_KEY")
+    st.caption("סדר החיפוש: SmartProspect (קרדיט אחד) ← Apollo החינמי ← Actor של Apify (כ-$0.005). האימות רק ב-MillionVerifier.")
+    f1, f2 = st.columns(2)
+    if f1.button("🔍 מצא מייל", key=f"ofind-{k}", type="primary", width="stretch"):
+        found, src, log = None, None, []
+        steps = [("SmartProspect", sp_key, lambda: _sp_find(OUT, sp_key, j, name, domain, O)),
+                 ("Apollo", secret("APOLLO_API_KEY"), lambda: OUT.apollo_match(secret("APOLLO_API_KEY"), name, domain)),
+                 ("Apify", secret("APIFY_API_TOKEN"), lambda: OUT.apify_find(secret("APIFY_API_TOKEN"), name, domain))]
+        with st.spinner("מחפש מייל…"):
+            for label, key_, fn in steps:
+                if not key_:
+                    log.append(f"{label}: אין מפתח")
+                    continue
+                try:
+                    found = fn()
+                except Exception as e:
+                    log.append(f"{label}: {str(e)[:100]}")
+                    continue
+                log.append(f"{label}: {'נמצא' if found else 'לא נמצא'}")
+                if found:
+                    src = label
+                    break
+        put(name=name, domain=domain, email=found or "", source=src or "", find_log=log, verified=None)
+        st.session_state.pop(f"oe-{k}", None)
+        st.rerun()
+    if O.get("find_log"):
+        st.caption(" · ".join(O["find_log"]))
+    if f2.button("✅ אמת ב-MillionVerifier", key=f"over-{k}", width="stretch", disabled=not email):
+        if not mv_key:
+            st.warning("חסר MILLIONVERIFIER_API_KEY ב-Secrets")
+        else:
+            try:
+                put(email=email, verified=OUT.mv_verify(mv_key, email))
+                st.rerun()
+            except Exception as e:
+                st.warning(f"האימות נכשל: {str(e)[:150]}")
+    v = O.get("verified")
+    if v:
+        (st.success if v["ok"] else st.error)(f"MillionVerifier: {v['result']}" + ("" if v["ok"] else " · לא נשלח למייל הזה"))
+
+    st.markdown("##### 3 · טיוטות לאישור")
+    if st.button("✍️ כתוב טיוטה", key=f"odr-{k}"):
+        with st.spinner("Claude כותב…"):
+            try:
+                d = _out_draft(j, name)
+                put(subject=d["subject"], body=d["email"], note=d["connect_note"])
+                st.session_state.pop(f"osub-{k}", None), st.session_state.pop(f"obody-{k}", None), st.session_state.pop(f"onote-{k}", None)
+                st.rerun()
+            except Exception as e:
+                st.warning(f"הכתיבה נכשלה: {str(e)[:150]}")
+    if O.get("body"):
+        sub = st.text_input("נושא", value=O["subject"], key=f"osub-{k}")
+        body = st.text_area("גוף המייל", value=O["body"], height=190, key=f"obody-{k}")
+        note = st.text_area("הערה לבקשת חיבור ב-LinkedIn", value=O.get("note", ""), height=80, max_chars=300, key=f"onote-{k}")
+        st.caption(f"{len(note)}/300 תווים. בלי קו״ח ובלי קישור.")
+        log_t = s.get("email_sent_log", [])
+        ok_pace, msg = OUT.pacing(log_t)
+        good = bool(email and v and v["ok"])
+        a, b, c = st.columns(3)
+        a.link_button("✉️ פתח ב-Gmail שלי", OUT.gmail_compose_url(email, sub, body), width="stretch", disabled=not (good and ok_pace),
+                      type="primary", help="נפתח חלון כתיבה בחשבון ה-Gmail האישי שלך. אתה לוחץ שליחה.")
+        if b.button("✓ שלחתי את המייל", key=f"osent-{k}", width="stretch", disabled=not good):
+            def m(s_):
+                s_.setdefault("email_sent_log", []).append(time.time())
+                s_.setdefault("outreach", {}).setdefault(k, {}).update({"email": email, "name": name, "subject": sub, "body": body, "note": note, "emailed_at": time.time()})
+            update_state(m, "outreach email sent")
+            st.rerun()
+        if c.button("💾 שמור טיוטה", key=f"osave-{k}", width="stretch"):
+            _out_save(k, {"name": name, "domain": domain, "email": email, "subject": sub, "body": body, "note": note, "verified": v})
+            st.toast("נשמר")
+        if not good:
+            st.caption("הכפתור נפתח אחרי שהמייל אומת כתקין.")
+        elif not ok_pace:
+            st.caption(msg)
+        st.markdown("**בקשת חיבור:** העתק את ההערה ושלח ב-LinkedIn במקביל")
+        st.code(note, language=None)
+        st.link_button("חפש את " + name + " ב-LinkedIn ↗", "https://www.linkedin.com/search/results/people/?keywords=" + requests.utils.quote(f"{name} {j.get('company') or ''}"))
+    if O.get("emailed_at"):
+        st.caption("נשלח ב-" + to_il(dt.datetime.fromtimestamp(O["emailed_at"], dt.timezone.utc).isoformat()).strftime("%d.%m %H:%M"))
+
+
+def _sp_find(OUT, key, j, name, domain, O):
+    res = OUT.sp_search(key, j.get("company") or "", domain)
+    fid = res.get("filter_id")
+    if not fid or not any(p["name"].strip().lower() == name.strip().lower() for p in res["people"]):
+        return None
+    return OUT.sp_unlock(key, fid, name)
+
+
 # ---------------- app shell ----------------
 state, _ = load_state()
 PAGES = {
@@ -2292,6 +2457,7 @@ PAGES = {
     "search": st.Page(page_search, title="חיפוש חדש", icon=":material/search:", url_path="search"),
     "stats": st.Page(page_stats, title="סטטיסטיקה", icon=":material/insights:", url_path="stats"),  # Assaf 19 Nov: above search history
     "tailor": st.Page(page_tailor, title="התאמת קו״ח", icon=":material/edit_document:", url_path="tailor"),
+    "outreach": st.Page(page_outreach, title="פנייה ישירה", icon=":material/forward_to_inbox:", url_path="outreach"),
     "history": st.Page(page_history, title="היסטוריית חיפושים", icon=":material/history:", url_path="history"),
     "companies": st.Page(page_companies, title="חברות", icon=":material/apartment:", url_path="companies"),
     "filters": st.Page(page_filters, title="סינון", icon=":material/block:", url_path="filters"),
