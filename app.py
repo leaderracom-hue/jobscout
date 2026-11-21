@@ -1064,7 +1064,11 @@ def card(j, new=False):
         if a5.button("✨ שאל את Claude" if not open_ask else "סגור את Claude", key=f"ask-{k}", width="stretch"):
             st.session_state.ask_open = None if open_ask else k
             st.rerun()
-        g1, g2, _g = c2.columns([1.6, 1.6, 4])
+        g1, g2, g3, _g = c2.columns([1.6, 1.6, 1.8, 2.4])
+        bd = set(j.get("boards") or [])
+        if bd & {"careers", "himalayas"} and "linkedin" not in bd:  # Assaf 21 Nov: same job on LinkedIn (poster, Easy Apply, people)
+            g3.link_button("🔗 מצא בלינקדאין", "https://www.linkedin.com/jobs/search/?keywords=" + requests.utils.quote(f"{j.get('title') or ''} {j.get('company') or ''}".strip()),
+                           width="stretch", help="חיפוש המשרה הזאת בלינקדאין לפי הכותרת והחברה")
         for col, kind, label in ((g1, "cover", "✍️ מכתב מקדים"), (g2, "note", "💬 הערה אישית")):
             with col.popover(label, width="stretch"):
                 _gen_panel(j, kind)
