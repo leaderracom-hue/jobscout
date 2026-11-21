@@ -44,7 +44,8 @@ LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automati
 WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע"}
 MIN_FIT = 40  # Assaf 19 Nov: threshold lowered 45 -> 40; a score under it goes straight to the archive ("auto") and is never shown
 HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
-BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "jobmaster": "JobMaster", "careers": "דף קריירה"}
+BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "jobmaster": "JobMaster", "careers": "דף קריירה",
+         "workable": "Workable", "himalayas": "Himalayas", "remotive": "Remotive", "remoteok": "RemoteOK", "arbeitnow": "Arbeitnow"}
 
 # Assaf 21 Nov: pastel palette, ~75% blue / 25% green, set once here and used everywhere (CSS variables + chart colors)
 PAL = {"blue": "#8EBCE6", "blue_l": "#DCECF9", "green": "#A8D8C0", "green_l": "#E1F2E8",
@@ -501,7 +502,10 @@ def archived(s, j):
     return any(urls & set(a.get("urls") or []) for a in s["archive"].values())
 
 
-SOURCES = {"linkedin": "LinkedIn", "alljobs": "AllJobs", "jobmaster": "JobMaster", "drushim": "דרושים", "careers": "דפי קריירה"}
+SOURCES = {"linkedin": "LinkedIn", "alljobs": "AllJobs", "jobmaster": "JobMaster", "drushim": "דרושים", "careers": "דפי קריירה",
+           # 21 Nov: free remote / EEA APIs (run only when EEA is selected)
+           "workable": "Workable", "himalayas": "Himalayas", "remotive": "Remotive", "remoteok": "RemoteOK", "arbeitnow": "Arbeitnow"}
+EEA_SOURCES = {"workable", "himalayas", "remotive", "remoteok", "arbeitnow"}
 IL_SOURCES = {"alljobs", "jobmaster", "drushim"}
 EMP_ARG = {"Full-Time": "full", "Part-Time": "part", "Contract": "contract", "Freelance": "freelance"}
 ARR_ARG = {"Remote": "remote", "Hybrid": "hybrid", "On-site": "onsite"}
@@ -510,7 +514,11 @@ DEFAULT_PREFS = {"regions": ["IL"], "employment": [], "arrangement": [], "source
 
 def prefs_of(s):
     """Assaf 21 Nov: search preferences saved with the data (regions, employment type, work arrangement, sources)."""
-    return {**DEFAULT_PREFS, **(settings_of(s).get("search_prefs") or {})}
+    p = {**DEFAULT_PREFS, **(settings_of(s).get("search_prefs") or {})}
+    old_all = {"linkedin", "alljobs", "jobmaster", "drushim", "careers"}
+    if set(p["sources"]) >= old_all:  # saved before the free remote boards existed: "all" still means all
+        p["sources"] = list(dict.fromkeys(list(p["sources"]) + sorted(EEA_SOURCES)))
+    return p
 
 
 def engine_args(prefs):
@@ -1217,6 +1225,8 @@ def prefs_panel(s):
         notes = []
         if not regions:
             notes.append("בחר לפחות אזור אחד.")
+        if "EEA" not in regions and set(src) & EEA_SOURCES:
+            notes.append("Workable, Himalayas, Remotive, RemoteOK ו-Arbeitnow הם לוחות של עבודה מרחוק, ורצים רק כשנבחר EEA.")
         if regions == ["EEA"] and set(src) & IL_SOURCES:
             notes.append("AllJobs, JobMaster ודרושים הם לוחות ישראליים, ולא ירוצו כשנבחר רק EEA.")
         if "EEA" in regions:

@@ -126,3 +126,78 @@ export async function discoverAts(companies, { max = 15 } = {}) {
   return found;
 }
 
+
+
+// ---------- free remote / EEA job APIs (21 Nov): Workable, Himalayas, Remotive, RemoteOK, Arbeitnow ----------
+// Only jobs a person in Israel / the EEA could take: location open to Europe / EEA / EMEA / worldwide / Israel, or not restricted.
+const OPEN_TO = /worldwide|anywhere|global|europe|\bemea\b|\beu\b|\beea\b|israel|austria|belgium|bulgaria|croatia|cyprus|czech|denmark|estonia|finland|france|germany|greece|hungary|ireland|italy|latvia|lithuania|luxembourg|malta|netherlands|poland|portugal|romania|slovakia|slovenia|spain|sweden|norway|iceland|liechtenstein/i;
+const openTo = list => { const a = (Array.isArray(list) ? list : [list]).filter(Boolean).map(String); return !a.length || a.some(x => OPEN_TO.test(x)); };
+const getJson = async (url, ms = 20000) => { const t = await get(url, ms); try { return t ? JSON.parse(t) : null; } catch { return null; } };
+const tag = (o, board) => ({ ...o, region: "EEA", remoteBoard: board });
+
+export async function workable(query, { pages = 3 } = {}) {
+  const out = []; const log = { pages: 0 }; let token = "";
+  for (let p = 0; p < pages; p++) {
+    const j = await getJson(`https://jobs.workable.com/api/v1/jobs?query=${encodeURIComponent(query)}&workplace=remote${token ? "&pageToken=" + encodeURIComponent(token) : ""}`);
+    if (!j) { log.error = "request failed"; break; }
+    log.pages++;
+    for (const x of j.jobs || []) {
+      const country = x.location?.countryName || "";
+      const locs = (x.locations || []).filter(l => l !== "TELECOMMUTE");
+      if (!openTo([country, ...locs].filter(Boolean))) continue;
+      out.push(tag({ title: x.title, company: x.company?.title || "", location: ["Remote", x.location?.city, country].filter(Boolean).join(", "),
+        posted: iso(x.created), url: x.url, desc: strip([x.description, x.requirementsSection].filter(Boolean).join(" ")), workplace: x.workplace || "remote",
+        language: x.language || "" }, "workable"));
+    }
+    token = j.nextPageToken; if (!token) break;
+  }
+  return { items: out, log: { ...log, kept: out.length } };
+}
+
+export async function himalayas(query, { pages = 3 } = {}) {
+  const out = []; const log = { pages: 0 };
+  for (let p = 0; p < pages; p++) {
+    const j = await getJson(`https://himalayas.app/jobs/api/search?q=${encodeURIComponent(query)}&limit=20&offset=${p * 20}`);
+    if (!j) { log.error = "request failed"; break; }
+    log.pages++;
+    for (const x of j.jobs || []) {
+      if (!openTo(x.locationRestrictions)) continue;  // empty = anywhere
+      out.push(tag({ title: x.title, company: x.companyName, location: "Remote" + ((x.locationRestrictions || []).length ? ", " + x.locationRestrictions.join(" / ") : ", anywhere"),
+        posted: iso(+x.pubDate * 1000), url: x.applicationLink || x.guid, desc: strip(x.description || x.excerpt), workplace: "remote" }, "himalayas"));
+    }
+    if ((j.jobs || []).length < 20) break;
+  }
+  return { items: out, log: { ...log, kept: out.length } };
+}
+
+export async function remotive(query) {
+  const j = await getJson(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}&limit=100`);
+  if (!j) return { items: [], log: { error: "request failed" } };
+  const out = (j.jobs || []).filter(x => openTo(x.candidate_required_location)).map(x => tag({ title: x.title, company: x.company_name,
+    location: "Remote, " + (x.candidate_required_location || "anywhere"), posted: iso(x.publication_date), url: x.url, desc: strip(x.description), workplace: "remote" }, "remotive"));
+  return { items: out, log: { pulled: (j.jobs || []).length, kept: out.length } };
+}
+
+export async function remoteok() {  // returns the ~100 newest remote jobs; the engine's title filter keeps the relevant ones
+  const j = await getJson("https://remoteok.com/api");
+  if (!Array.isArray(j)) return { items: [], log: { error: "request failed" } };
+  const out = j.filter(x => x && x.position && openTo(x.location)).map(x => tag({ title: x.position, company: x.company, location: "Remote, " + (x.location || "anywhere"),
+    posted: iso(x.date), url: x.url || x.apply_url, desc: strip(x.description), workplace: "remote" }, "remoteok"));
+  return { items: out, log: { pulled: j.length - 1, kept: out.length } };
+}
+
+export async function arbeitnow({ pages = 5 } = {}) {  // EU board (mostly Germany); remote jobs only
+  const out = []; const log = { pages: 0 };
+  for (let p = 1; p <= pages; p++) {
+    const j = await getJson(`https://www.arbeitnow.com/api/job-board-api?page=${p}`);
+    if (!j) { log.error = "request failed"; break; }
+    log.pages++;
+    for (const x of j.data || []) {
+      if (!x.remote) continue;
+      out.push(tag({ title: x.title, company: x.company_name, location: "Remote, " + (x.location || "Germany"), posted: iso(+x.created_at * 1000), url: x.url,
+        desc: strip(x.description), workplace: "remote" }, "arbeitnow"));
+    }
+    if (!j.links?.next) break;
+  }
+  return { items: out, log: { ...log, kept: out.length } };
+}

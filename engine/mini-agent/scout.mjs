@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { env, RUNS_DIR } from "../env.mjs";
-import { drushim as drushimFree, careers as careersFree, discoverAts } from "./sources-free.mjs";
+import { drushim as drushimFree, careers as careersFree, discoverAts, workable as workableFree, himalayas as himalayasFree, remotive as remotiveFree, remoteok as remoteokFree, arbeitnow as arbeitnowFree } from "./sources-free.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DICT = JSON.parse(fs.readFileSync(path.join(HERE, "dictionary.json"), "utf8"));
@@ -32,7 +32,8 @@ const ROWS = +flag("rows", 30);
 const ROWS_DEFAULT = { linkedin: 70, alljobs: 40, jobmaster: 70, indeed: 70 }; // 19 Nov: JobMaster 40 -> 70 (79% of its 40+ jobs get sent) // Assaf 12 Nov: 70 per board; 18 Nov: AllJobs 40 (70 + full details never finished), JobMaster 40
 const R = b => (flag("rows", false) ? ROWS : ROWS_DEFAULT[b] || ROWS);
 const BOARDS_ASKED = String(flag("free", false) ? "drushim,careers" : flag("boards", "linkedin,drushim,alljobs,jobmaster,careers")).split(",").map(s => s.trim()).filter(Boolean);
-const BOARDS = BOARDS_ASKED.filter(b => !["drushim", "alljobs", "jobmaster", "drushimapify", "indeed"].includes(b) || String(flag("regions", "IL")).toUpperCase().includes("IL")); // Israeli boards only when Israel is selected
+const BOARDS = BOARDS_ASKED.filter(b => !["drushim", "alljobs", "jobmaster", "drushimapify", "indeed"].includes(b) || String(flag("regions", "IL")).toUpperCase().includes("IL")) // Israeli boards only when Israel is selected
+  .filter(b => !["workable", "himalayas", "remotive", "remoteok", "arbeitnow"].includes(b) || String(flag("regions", "IL")).toUpperCase().includes("EEA")); // remote / EEA boards only when EEA is selected
 const DRY = !!flag("dry", false), MATCH = !!flag("match", false), ALL_TITLES = !!flag("all-titles", false);
 const REPLAY = flag("replay", "");
 // 21 Nov: where (IL / EEA), how (remote / hybrid / onsite) and what contract (full / part / contract / freelance) — terms, not keywords
@@ -61,6 +62,12 @@ const ACTORS = {
 const FREE = {
   drushim: () => drushimFree([...new Set([SEARCH, HE, ...(entry.drushimQueries || [])].filter(Boolean))], { pages: 5 }), // 19 Nov: 3 -> 5 pages (75% of its 40+ jobs get sent). Drushim ranks by relevance, so breadth = freshness
   careers: () => careersFree({ regions: REGIONS_SEL }),
+  // 21 Nov: free remote / EEA APIs - run only when EEA is selected (see BOARDS)
+  workable: () => workableFree(SEARCH),
+  himalayas: () => himalayasFree(SEARCH),
+  remotive: () => remotiveFree(SEARCH),
+  remoteok: () => remoteokFree(),
+  arbeitnow: () => arbeitnowFree(),
 };
 for (const b of BOARDS) if (!ACTORS[b] && !FREE[b]) { console.log("unknown board:", b, "— use", [...Object.keys(ACTORS), ...Object.keys(FREE)].join(",")); process.exit(1); }
 const PAID = BOARDS.filter(b => ACTORS[b]), FREEB = BOARDS.filter(b => FREE[b]);
@@ -79,6 +86,7 @@ const NORM = {
   drushimapify: j => ({ title: j.title, company: j.company, location: j.location || j.locationEnglish, posted: iso(j.postedAt || j.postedDate), url: j.portalUrl || j.applyUrl, desc: [j.description, j.requirements].filter(Boolean).join("\n") }),
   drushim:  j => j.jobCode ? NORM.drushimapify(j) : j,   // free fetcher already normalized; old Apify raw files still replay
   careers:  j => j,
+  workable: j => j, himalayas: j => j, remotive: j => j, remoteok: j => j, arbeitnow: j => j,
   alljobs:  j => { // detailMode "always" fills companyName; on confidential posts it sometimes carries the breadcrumb/title instead
     const crumb = s => String(s || "").replace(/^.*»\s*/, "").trim();
     const title = crumb(j.title), co = String(j.companyName || j.company || "");
