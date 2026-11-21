@@ -277,6 +277,53 @@ def excluded(s, j):
     return None
 
 
+IL_PLACES = re.compile("israel|ישראל|tel aviv|tel-aviv|tel aviv-yafo|תל אביב|herzliya|הרצליה|ramat gan|רמת גן|petah tikva|petach tikva|פתח תקווה|"
+                       "haifa|חיפה|jerusalem|ירושלים|raanana|ra'anana|רעננה|netanya|נתניה|rehovot|רחובות|holon|חולון|beer sheva|be'er sheva|באר שבע|"
+                       "yokneam|יקנעם|kfar saba|כפר סבא|hod hasharon|bnei brak|givatayim|rishon|caesarea|airport city|modiin|modi'in|ness ziona|or yehuda", re.I)
+ISRAELI_BOARDS = {"alljobs", "jobmaster", "drushim", "drushimapify"}
+EN_WORDS = {"the", "and", "with", "for", "you", "our", "will", "your", "are", "experience", "team", "work", "we", "of", "to", "in", "is"}
+OTHER_WORDS = {"und", "der", "die", "das", "mit", "für", "wir", "sie", "et", "les", "des", "une", "pour", "nous", "vous", "avec", "el", "los",
+               "las", "para", "con", "una", "che", "per", "il", "di", "een", "het", "van", "voor", "zijn", "jest", "oraz", "dla", "się", "och", "att", "är"}
+
+
+def is_international(j, sc=None):
+    """Assaf 21 Nov: a job is international when it is not in Israel (Israeli boards and Israeli places count as Israel)."""
+    if set(j.get("boards") or []) & ISRAELI_BOARDS:
+        return False
+    # order matters: the job's own location beats the company's home country (Papaya is Israeli, its Barcelona job is not)
+    if j.get("region") in ("IL", "EEA"):  # engine tag from the careers scan
+        return j["region"] == "EEA"
+    loc = str(j.get("location") or "")
+    if loc.strip():
+        return not IL_PLACES.search(loc)
+    return ((sc or {}).get("region") or j.get("region")) in ("EEA", "Other", "Global")
+
+
+def is_english_post(j):
+    """Cheap check before paying to score: the post is written in English (not Hebrew, German, French, Polish...)."""
+    words = re.findall(r"[a-zà-ÿąćęłńóśźż]+", f"{j.get('title', '')} {str(j.get('desc') or '')[:3000]}".lower())
+    if not words:
+        return True  # no text to judge -> let the review decide
+    en, other = sum(w in EN_WORDS for w in words), sum(w in OTHER_WORDS for w in words)
+    he = len(re.findall("[֐-׿]", str(j.get("desc") or "")[:3000]))
+    return en >= other * 1.5 and he < 30
+
+
+def intl_reason(j, sc):
+    """Assaf 21 Nov rule for jobs outside Israel: written in English, fully remote, no language required besides English and Hebrew.
+    Returns why the job is out, or None when it may be shown (Israeli jobs always return None)."""
+    if not is_international(j, sc):
+        return None
+    if not is_english_post(j):
+        return "משרה בחו״ל שלא כתובה באנגלית"
+    if (sc or {}).get("arr", j.get("arr")) != "Remote":
+        return "משרה בחו״ל שאינה מרחוק מלא"
+    extra = [x for x in ((sc or {}).get("langs_req", j.get("langs_req")) or []) if str(x).strip().lower() not in ("english", "hebrew", "אנגלית", "עברית")]
+    if extra:
+        return "משרה בחו״ל שדורשת שפה נוספת: " + ", ".join(extra)
+    return None
+
+
 def lang_of(j):
     s = f"{j.get('title', '')} {str(j.get('desc', ''))[:800]}"
     he, lat = len(re.findall(r"[֐-׿]", s)), len(re.findall(r"[A-Za-z]", s))
@@ -300,7 +347,7 @@ PRICE = {"claude-haiku-5-5": (0.10, 0.50), "claude-sonnet-5-5": (2.0, 10.0)}  # 
 
 EVAL_SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["requirements", "employment_type", "work_arrangement", "location", "professional_match", "eligibility_status",
+    "required": ["requirements", "employment_type", "work_arrangement", "location", "languages_required", "professional_match", "eligibility_status",
                  "eligibility_match", "verdict", "why_he", "gaps", "cv_file"],
     "properties": {
         "requirements": {"type": "array", "items": {"type": "object", "additionalProperties": False,
@@ -316,6 +363,7 @@ EVAL_SCHEMA = {
                      "properties": {"job_region": {"type": "string", "enum": ["Israel", "EEA", "Other", "Global", "Unknown"]},
                                     "allowed_work_from": {"type": "string"}, "residency_or_permit": {"type": "string"},
                                     "evidence": {"type": "string"}}},
+        "languages_required": {"type": "array", "items": {"type": "string"}},
         "professional_match": {"type": "integer"},
         "eligibility_status": {"type": "string", "enum": ["eligible", "needs_verification", "not_eligible"]},
         "eligibility_match": {"type": "integer"},
@@ -340,7 +388,8 @@ Candidate eligibility facts: lives in Tel Aviv, Israel. Israeli citizen AND Poli
 1. requirements: list every requirement the POST states (max 12). kind = must (stated as required / must / X+ years) or nice (advantage / plus / preferred). status: met = the profile proves it; partial = related but weaker; missing = the post requires it and the profile proves he does not have it; unknown = the profile does not say. Evidence = a short quote from the post or the profile. A requirement the post does not state is NOT missing.
 2. professional_match 0-100 (skills, role, systems, experience only; ignore location and contract terms): start from role fit (same function and seniority = 70, adjacent = 50, different function = 20), then +up to 25 for met must-haves and nice-to-haves, -10 for each missing must-have (not for unknown), -5 per partial must-have. Cyber / information-security employer or role = 0.
 3. employment_type and work_arrangement: only what the post says (quote it). Not stated = Unknown. Never assume.
-4. location: job_region of the role itself; allowed_work_from = where the post allows the worker to be (or "not stated"); residency_or_permit = any residency / work-permit / time-zone limit (or "none stated").
+4. languages_required: every human language the POST requires the worker to speak or write (in English, e.g. "English", "German"). Empty list if none is stated. "Nice to have" languages do not count.
+   location: job_region of the role itself; allowed_work_from = where the post allows the worker to be (or "not stated"); residency_or_permit = any residency / work-permit / time-zone limit (or "none stated").
 5. eligibility_status: not_eligible only when the post PROVES a hard conflict (e.g. must live in the US, on-site in Berlin with no relocation, local citizenship he lacks). needs_verification when something material is not stated. eligible when terms are clear and fit his facts. eligibility_match 0-100 follows: eligible 85-100, needs_verification 50-75, not_eligible 0-25.
 6. verdict follows professional_match and eligibility: Apply now (80+ and not not_eligible), Apply (60-79), Maybe (40-59), Skip (<40 or not_eligible).
 7. why_he: ONE short sentence in simple, natural Hebrew (max 18 words), male second person ("יש לך…"): the main reason it fits, then the main gap after "פער:". Tool names in English. Never state how many years or months he has. Hebrew letters, English and digits only.
@@ -433,6 +482,7 @@ def score_job(j, kw, prefs=None):
     compact = lambda e: {k: e[k] for k in ("professional_match", "eligibility_match", "eligibility_status", "verdict", "why_he")}
     return {"fit": final, "pro": int(dec["professional_match"]), "elig": int(dec["eligibility_match"]), "elig_status": status, "elig_notes": notes,
             "emp": base["employment_type"]["value"], "arr": base["work_arrangement"]["value"], "region": base["location"]["job_region"],
+            "langs_req": base.get("languages_required") or [],
             "loc_terms": {k: base["location"][k] for k in ("allowed_work_from", "residency_or_permit")},
             "reqs": base["requirements"][:12], "verdict": dec["verdict"], "why": dec["why_he"], "gaps": dec["gaps"][:4], "lang": lang,
             "cv": base["cv_file"] if base["cv_file"] in pool else (pool[0] if pool else ""),
@@ -514,6 +564,9 @@ def search_core(kw, hours, batch, report, prefs=None):
         (seen_again.__setitem__(k, j) if k in s["jobs"] else fresh.append((k, j)))
     blocked = [(k, j, excluded(s, j)) for k, j in fresh if excluded(s, j)]  # user's exclude words / blocked companies: no scoring cost
     fresh = [(k, j) for k, j in fresh if not excluded(s, j)]
+    # Assaf 21 Nov: jobs outside Israel must be in English - checked for free before scoring
+    blocked += [(k, j, "משרה בחו״ל שלא כתובה באנגלית") for k, j in fresh if is_international(j) and not is_english_post(j)]
+    fresh = [(k, j) for k, j in fresh if not (is_international(j) and not is_english_post(j))]
     report("scoring", found=len(found), new=len(fresh))
     scores, usd = {}, 0.0
     with ThreadPoolExecutor(8) as ex:
@@ -532,7 +585,10 @@ def search_core(kw, hours, batch, report, prefs=None):
 
     autoc = {}
 
+    intl_out = []
+
     def mutate(st_):
+        intl_out.clear()
         for k, j in seen_again.items():
             h = st_["jobs"].get(k)
             if not h:
@@ -549,15 +605,20 @@ def search_core(kw, hours, batch, report, prefs=None):
                 st_["jobs"][k]["desc"] = str(j["desc"])[:3000]
             if is_gtm(j):
                 st_["jobs"][k]["gtm"] = True
-            if fit is not None and fit < MIN_FIT:  # Assaf 19 Nov rule of thumb: under MIN_FIT is never shown, whatever else (GTM included)
+            out = intl_reason(j, scores.get(k)) if "fit" in scores.get(k, {}) else None  # outside Israel: English, fully remote, EN/HE only
+            if out:
+                st_["archive"][k] = {"status": "auto", "reason": "intl", "note": out, "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
+                                     "urls": list((j.get("links") or {"x": j.get("url")}).values())}
+                intl_out.append(k)
+            elif fit is not None and fit < MIN_FIT:  # Assaf 19 Nov rule of thumb: under MIN_FIT is never shown, whatever else (GTM included)
                 st_["archive"][k] = {"status": "auto", "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
                                      "urls": list((j.get("links") or {"x": j.get("url")}).values())}
         for k, j, why in blocked:
             st_["jobs"][k] = {"key": k, "title": j["title"], "company": j.get("company"), "url": j.get("url"), "boards": j.get("boards", []),
                               "kws": [kw], "foundAt": now, "posted": j.get("posted")}
-            st_["archive"][k] = {"status": "auto", "reason": "cyber" if why == "סייבר" else "excluded", "note": why, "at": now, "title": j["title"], "company": j.get("company"),
+            st_["archive"][k] = {"status": "auto", "reason": "cyber" if why == "סייבר" else "intl" if why.startswith("משרה בחו") else "excluded", "note": why, "at": now, "title": j["title"], "company": j.get("company"),
                                  "urls": list((j.get("links") or {"x": j.get("url")}).values())}
-        auto = len(blocked) + sum(1 for k, j in fresh if (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
+        auto = len(blocked) + len(intl_out) + sum(1 for k, j in fresh if k not in intl_out and (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
         autoc["n"] = auto
         runs =[{"kw": kw, "hours": hours or None, "at": now, "batch": batch, "found": len(found), "new": len(fresh), "autoRemoved": auto,
                  "stats": stats, "sourceErrors": src_errors, "prefs": prefs, "keys": keys, "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:499]
@@ -993,7 +1054,8 @@ def inbox_body():
     queue = s.get("queue", {})
     opn = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
     hidden = [j for j in opn if excluded(s, j)]  # the user's exclude words / blocked companies
-    opn = [j for j in opn if not excluded(s, j) and not (j.get("fit") is not None and j["fit"] < MIN_FIT)]  # under MIN_FIT: never shown
+    opn = [j for j in opn if not excluded(s, j) and not (j.get("fit") is not None and j["fit"] < MIN_FIT)  # under MIN_FIT: never shown
+           and not (j.get("arr") and intl_reason(j, None))]  # outside Israel: English, fully remote, EN/HE only
     cfg = settings_of(s)
     CTX["followed"] = set(cfg["followed_companies"])
     CTX["sent_by_co"] = {}
@@ -1887,10 +1949,11 @@ def optimization_block(s):
             c2.caption(f"אחוז הגשה מתוך משרות {MIN_FIT}+ (גבוה = מקור מדויק)")
             c2.bar_chart(df.set_index("מקור")[["% נשלחו מ-" + f"{MIN_FIT}+"]], horizontal=True, color=PAL["green"], height=240)
     with t4:
-        reasons = {"ציון מתחת לסף": 0, "מילים / חברות חסומות": 0, "סייבר": 0}
+        reasons = {"ציון מתחת לסף": 0, "מילים / חברות חסומות": 0, "סייבר": 0, "חו״ל: לא אנגלית / לא מרחוק / שפה נוספת": 0}
         for a in arc.values():
             if a.get("status") == "auto":
-                reasons["סייבר" if a.get("reason") == "cyber" else "מילים / חברות חסומות" if a.get("reason") == "excluded" else "ציון מתחת לסף"] += 1
+                reasons["סייבר" if a.get("reason") == "cyber" else "מילים / חברות חסומות" if a.get("reason") == "excluded"
+                        else "חו״ל: לא אנגלית / לא מרחוק / שפה נוספת" if a.get("reason") == "intl" else "ציון מתחת לסף"] += 1
         cfg = settings_of(s)
         c1, c2 = st.columns([1.3, 1])
         c1.caption("משרות שהוסרו אוטומטית, לפי סיבה")
