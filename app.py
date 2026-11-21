@@ -343,7 +343,8 @@ REGION_OPTS = {"IL": "ישראל", "EEA": "EEA / אירופה"}
 EMP_HE = {"Full-Time": "משרה מלאה", "Part-Time": "חלקית", "Contract": "חוזה / פרויקט", "Freelance": "פרילנס", "Unknown": "לא ידוע"}
 ARR_HE = {"Remote": "מרחוק", "Hybrid": "היברידי", "On-site": "מהמשרד", "Unknown": "לא ידוע"}
 ELIG_HE = {"eligible": "זכאי", "needs_verification": "דורש אימות", "not_eligible": "לא מתאים לתנאים"}
-SCORE_MODEL, TIE_MODEL = "claude-haiku-5-5", "claude-sonnet-5-5"  # Assaf 21 Nov: 2 independent Haiku reviews; Sonnet decides gaps > 10
+MODEL = "claude-haiku-5-5"  # Assaf 21 Nov: the cheapest model for EVERYTHING in the app (saves tokens)
+SCORE_MODEL = TIE_MODEL = MODEL  # 2 independent reviews; a third decides gaps > 10
 PRICE = {"claude-haiku-5-5": (0.10, 0.50), "claude-sonnet-5-5": (2.0, 10.0)}  # $ per 1M tokens in / out
 
 EVAL_SCHEMA = {
@@ -398,6 +399,42 @@ Candidate eligibility facts: lives in Tel Aviv, Israel. Israeli citizen AND Poli
 """
 
 
+def track(r):
+    """Count the tokens of one Claude reply (thread-safe, in memory); flush_usage() saves them to the data repo per month."""
+    u = getattr(r, "usage", None)
+    if not u:
+        return
+    with SH["lock"]:
+        p = SH.setdefault("usage_pending", {"in": 0, "out": 0, "calls": 0})
+        p["in"] += (u.input_tokens or 0) + (getattr(u, "cache_creation_input_tokens", 0) or 0) + (getattr(u, "cache_read_input_tokens", 0) or 0)
+        p["out"] += u.output_tokens or 0
+        p["calls"] += 1
+
+
+def flush_usage(force=False):
+    p = SH.get("usage_pending")
+    if not p or not p["calls"]:
+        return
+    if not force and time.time() - SH.get("usage_flush", 0) < 60:
+        return
+    with SH["lock"]:
+        add, SH["usage_pending"] = dict(p), {"in": 0, "out": 0, "calls": 0}
+        SH["usage_flush"] = time.time()
+    month = dt.datetime.now(IL).strftime("%Y-%m")
+
+    def m(s):
+        u = s.setdefault("usage", {}).setdefault(month, {"in": 0, "out": 0, "calls": 0})
+        for k in ("in", "out", "calls"):
+            u[k] += add[k]
+    try:
+        update_state(m, "usage")
+    except Exception:
+        with SH["lock"]:  # keep it for the next flush
+            q = SH["usage_pending"]
+            for k in ("in", "out", "calls"):
+                q[k] += add[k]
+
+
 def _client():
     import anthropic
     return anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"), max_retries=4)
@@ -406,6 +443,7 @@ def _client():
 def _call(model, system, user, schema, effort="medium"):
     r = _client().messages.create(model=model, max_tokens=16000, system=system, messages=[{"role": "user", "content": user}],
                                   output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}})
+    track(r)
     if r.stop_reason == "refusal":
         raise RuntimeError("refused")
     text = next(b.text for b in r.content if getattr(b, "type", "") == "text")
@@ -897,8 +935,9 @@ def ask_claude(j, question, prior):
     for q, a in prior[-4:]:
         msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
     msgs.append({"role": "user", "content": question})
-    r = client.beta.messages.create(model="claude-opus-5-5", max_tokens=16000, system=system, messages=msgs,
+    r = client.beta.messages.create(model=MODEL, max_tokens=16000, system=system, messages=msgs,
                                     output_config={"effort": "low"}, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    track(r)
     if r.stop_reason == "refusal":
         return "Claude לא ענה על השאלה הזאת. נסה לנסח אותה אחרת."
     return "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip() or "(אין תשובה)"
@@ -1048,9 +1087,10 @@ def _gen_text(j, kind):
     else:
         ask = ("Write a short personal note (max 280 characters) in " + ("Hebrew" if he else "English") + " to send to the person who posted this role "
                "(LinkedIn connection note or a first message). Say he saw the role and one concrete reason it fits. ")
-    r = client.messages.create(model="claude-haiku-5-5", max_tokens=900, messages=[{"role": "user", "content": (
+    r = client.messages.create(model=MODEL, max_tokens=900, messages=[{"role": "user", "content": (
         f"Role: {j.get('title')} at {j.get('company')} ({j.get('location')})\nJob text: {(j.get('desc') or j.get('why') or '')[:2200]}\n\n" + ask + GEN_RULES +
         " Return only the text.")}])
+    track(r)
     t = "".join(b.text for b in r.content if b.type == "text").strip()
     return t[:290] if kind == "note" else t
 
@@ -1366,6 +1406,57 @@ def page_search():
             st.caption("חיפוש רץ כבר. אפשר לעבור לתיבת המשרות; משרות נכנסות לשם בכל פעם שמילה מסתיימת.")
 
 
+def ask_search(rows, label, question, prior):
+    """Assaf 21 Nov: ask Claude about ONE search (the jobs it returned). Cheapest model; compact table of the results."""
+    import anthropic
+    client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"))
+    lines = ["title|company|fit|status|why"] + [f"{j.get('title')}|{j.get('company')}|{j.get('fit')}|{j['_st']}|{(j.get('why') or '')[:140]}" for j in rows[:90]]
+    system = (BRAIN + "\n\n---\nYou answer Assaf's questions about ONE search he ran in Job Scout: " + label + ". Below are the jobs it returned. Answer in simple, "
+              "natural Hebrew, male second person, keep tool names in English, concrete and short. Use only this data, compute exactly, say when it cannot "
+              "answer.\n\nRESULTS:\n" + "\n".join(lines))
+    msgs = []
+    for q, a in prior[-4:]:
+        msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+    msgs.append({"role": "user", "content": question})
+    r = client.messages.create(model=MODEL, max_tokens=4000, system=system, messages=msgs)
+    track(r)
+    return "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip() or "(אין תשובה)"
+
+
+SEARCH_PRESETS = ["מה הכי שווה לשלוח מהחיפוש הזה?", "למה הרבה משרות קיבלו ציון נמוך כאן?", "אילו חברות חוזרות?"]
+
+
+def search_ask_panel(g, keys, label, s):
+    hist = st.session_state.setdefault("ask_search_hist", {}).setdefault(g, [])
+    ST = {"sent": "נשלח", "removed": "הוסר", "auto": "מתחת לסף"}
+    rows = [{**s["jobs"][k], "_st": ST.get((s["archive"].get(k) or {}).get("status"), "פתוח")} for k in keys if k in s["jobs"]]
+    rows.sort(key=lambda j: -(j.get("fit") or 0))
+    with st.container(border=True):
+        st.markdown(f"<span class='ai-h'>✨ שאל את Claude על החיפוש הזה ({len(rows)} משרות)</span>", unsafe_allow_html=True)
+        for q, a in hist:
+            st.markdown(f"**שאלת:** {q}")
+            with st.container(border=True):
+                st.markdown(a)
+        cols = st.columns(len(SEARCH_PRESETS))
+        asked = None
+        for i, q in enumerate(SEARCH_PRESETS):
+            if cols[i].button(q, key=f"sap-{g}-{i}", width="stretch"):
+                asked = q
+        with st.form(f"saf-{g}", clear_on_submit=True, border=False):
+            a1, a2 = st.columns([5, 1], vertical_alignment="bottom")
+            free = a1.text_input("שאלה משלך", placeholder="שאלה משלך…", label_visibility="collapsed")
+            if a2.form_submit_button("שאל", type="primary", width="stretch") and free.strip():
+                asked = free.strip()
+        if asked:
+            with st.spinner("Claude חושב…"):
+                try:
+                    hist.append((asked, ask_search(rows, label, asked, hist)))
+                except Exception as e:
+                    st.info(f"השאלה נכשלה: {str(e)[:200]}", icon="⚠️")
+                    return
+            st.rerun()
+
+
 def page_history():
     """Assaf 19 Nov: every search ever kept (last 500 keyword runs), not only 72 hours; 'search again' refills the search page."""
     s, _ = load_state()
@@ -1394,7 +1485,7 @@ def page_history():
         usd = sum((r.get("claudeUsd") or 0) for r in runs) + len(runs) * 0.16  # Apify per keyword, measured 18 Nov
         label = f"{at} · {len(runs)} מילים · {WINDOWS.get(hours, 'שבוע')}"
         with st.container(border=True):
-            a, b_, c = st.columns([5, 1, 1.2], vertical_alignment="center")
+            a, b_, c, d_ = st.columns([4.2, 1, 1.2, 1.7], vertical_alignment="center")
             a.markdown(f"**{label}** · {sum(r.get('new', 0) for r in runs)} חדשות"
                        + (f" · {good} עם ציון {MIN_FIT}+ · {open_n} עדיין פתוחות" if keys else "")
                        + f" · כ-${usd:.2f}  \n"
@@ -1403,11 +1494,17 @@ def page_history():
                          help=None if keys else "רשימת המשרות של חיפוש נשמרת 72 שעות"):
                 st.session_state.hist = {"keys": keys, "label": label}
                 st.switch_page(PAGES["inbox"])
+            if d_.button("✨ שאל את Claude", key=f"sask-{g}", width="stretch", disabled=not keys,
+                         help=None if keys else "רשימת המשרות של חיפוש נשמרת 72 שעות"):
+                st.session_state.ask_search_open = None if st.session_state.get("ask_search_open") == g else g
+                st.rerun()
             if c.button("↻ חפש שוב", key=f"again-{g}", width="stretch"):
                 _preset(kws_g)
                 st.session_state.kw_free = ", ".join(k for k in kws_g if k not in KEYWORDS)
                 st.session_state.win = hours if hours in WINDOWS else 0
                 st.switch_page(PAGES["search"])
+        if st.session_state.get("ask_search_open") == g:
+            search_ask_panel(g, keys, label, s)
 
     st.markdown("##### לפי מילה")
     have = [k for k in KEYWORDS if any(r["kw"] == k for r in s.get("runs", []))] + \
@@ -1715,8 +1812,9 @@ def ask_data(question, prior):
     for q, a in prior[-4:]:
         msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
     msgs.append({"role": "user", "content": question})
-    r = client.beta.messages.create(model="claude-opus-5-5", max_tokens=16000, system=system, messages=msgs,
+    r = client.beta.messages.create(model=MODEL, max_tokens=16000, system=system, messages=msgs,
                                     output_config={"effort": "medium"}, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    track(r)
     if r.stop_reason == "refusal":
         return "Claude לא ענה על השאלה הזאת. נסה לנסח אותה אחרת."
     return "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip() or "(אין תשובה)"
@@ -1881,10 +1979,11 @@ def run_research(s):
         "You are the analyst inside Job Scout, Assaf's job-search dashboard (Israel only; he applies manually). Use only the data below; "
         "compute exactly and say when the data cannot answer. Jobs with GTM in the title or post skip his title filters by his rule.\n\nDATA:\n"
         + data_context(s)), "cache_control": {"type": "ephemeral"}}]
-    with client.beta.messages.stream(model="claude-opus-5-5", max_tokens=64000, system=system, messages=[{"role": "user", "content": prompt}],
+    with client.beta.messages.stream(model=MODEL, max_tokens=64000, system=system, messages=[{"role": "user", "content": prompt}],
                                      output_config={"effort": "high", "format": {"type": "json_schema", "schema": RESEARCH_SCHEMA}},
                                      betas=["server-side-fallback-2026-07-01"], fallbacks="default") as stream:
         r = stream.get_final_message()
+    track(r)
     if r.stop_reason == "refusal":
         raise RuntimeError("Claude declined to write the report")
     text = next((b.text for b in r.content if getattr(b, "type", "") == "text"), "")
@@ -2134,7 +2233,7 @@ def page_stats():
 
 LEVELS = ["Basic", "Familiarity", "Intermediate", "Advanced", "Expert"]
 LEVEL_HE = {"Basic": "בסיסי", "Familiarity": "היכרות", "Intermediate": "בינוני", "Advanced": "מתקדם", "Expert": "מומחה"}
-TAILOR_MODEL = "claude-opus-5-5"
+TAILOR_MODEL = MODEL
 ANALYZE_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "required": ["ats_keywords", "must_haves", "gaps", "skills_to_confirm", "recommendations"],
@@ -2189,6 +2288,7 @@ def _tailor_call(user, schema, effort="medium"):
                                      output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
                                      betas=["server-side-fallback-2026-07-01"], fallbacks="default") as stream:
         r = stream.get_final_message()
+    track(r)
     if r.stop_reason == "refusal":
         raise RuntimeError("Claude declined")
     return json.loads(next(b.text for b in r.content if getattr(b, "type", "") == "text"))
@@ -2409,7 +2509,7 @@ def _out_draft(j, contact):
     schema = {"type": "object", "additionalProperties": False, "required": ["subject", "email", "connect_note"],
               "properties": {"subject": {"type": "string"}, "email": {"type": "string"}, "connect_note": {"type": "string"}}}
     r = client.messages.create(
-        model="claude-haiku-5-5", max_tokens=1200,
+        model=MODEL, max_tokens=1200,
         output_config={"format": {"type": "json_schema", "schema": schema}},
         messages=[{"role": "user", "content": (
             "Write a short cold outreach from Assaf, a product manager for AI and marketing automation (n8n, workflow automation, Salesforce, Dynamics 365), "
@@ -2418,6 +2518,7 @@ def _out_draft(j, contact):
             "Rules: English, human and plain, 60-90 words, no links, no mention of a CV or attachment, never mention what Assaf lacks or has not done, "
             "no invented numbers or claims, no flattery, no 'I hope this finds you well'. Say he saw the role, one concrete line on why he fits "
             "from the description, and offer to share more if relevant. Sign 'Assaf'. connect_note: LinkedIn connection note, max 280 characters, same tone.")}])
+    track(r)
     d = json.loads("".join(b.text for b in r.content if b.type == "text"))
     d["connect_note"] = d["connect_note"][:290]
     return d
@@ -2580,9 +2681,15 @@ with st.sidebar:
     st.progress(min(1.0, sent_n / max(1, goal)), text=f"נשלחו היום **{sent_n}** / {goal}")
     open_n = sum(1 for j in state["jobs"].values() if j["key"] not in state["archive"] and j["key"] not in state.get("queue", {}))
     cap = int(secret("MAX_SEARCHES_PER_DAY", 30))
+    flush_usage()
+    _u = (state.get("usage") or {}).get(dt.datetime.now(IL).strftime("%Y-%m"), {})
+    _p = SH.get("usage_pending") or {}
+    _tin, _tout = _u.get("in", 0) + _p.get("in", 0), _u.get("out", 0) + _p.get("out", 0)
     usd, cap_usd = apify_usage()
     st.markdown(f"<div class='side-kpi'><span>משרות פתוחות</span><b>{open_n}</b></div>"
                 f"<div class='side-kpi'><span>חיפושים היום</span><b>{runs_today(state)}/{cap}</b></div>"
+                + f"<div class='side-kpi'><span>Claude החודש (טוקנים)</span><b>{(_tin + _tout) / 1e6:.2f}M</b></div>"
+                f"<div class='side-kpi'><span>קלט / פלט</span><b>{_tin / 1e6:.2f}M / {_tout / 1e6:.2f}M</b></div>"
                 + (f"<div class='side-kpi'><span>Apify החודש</span><b>${usd:.2f} מתוך ${cap_usd:.0f}</b></div>" if usd is not None else ""),
                 unsafe_allow_html=True)
     _b, _info = active_batch()
