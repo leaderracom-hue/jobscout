@@ -992,9 +992,9 @@ def card(j, new=False):
             + f'<div class="tags">{tags}</div>'
             + (f'<details class="why"><summary>למה זה מתאים</summary>{why}{more}</details>' if why else ""),
             unsafe_allow_html=True)
-        a1, a2, a3, a4, a5, a6, a7 = c2.columns([2, 1.1, 1.2, 1.1, 1.6, 0.9, 1.2])
+        a1, a2, a3, a4, a5, a6, a7 = c2.columns([2, 1.2, 1.2, 1.1, 1.6, 0.9, 1.6])
         co = j.get("company") or ""
-        if "linkedin" in (j.get("boards") or []) and a7.button("✉️ פנייה", key=f"out-{k}", width="stretch", help="מציאת איש קשר, מייל מאומת וטיוטה לאישור"):
+        if a7.button("👤 מצא איש קשר", key=f"out-{k}", width="stretch", help="מציאת איש קשר, מייל מאומת וטיוטה לאישור"):
             st.session_state.outreach_job = k
             st.switch_page(PAGES["outreach"])
         with a6.popover("🚫", help="חסימת החברה", width="stretch"):
@@ -2428,10 +2428,10 @@ def page_outreach():
     his own Gmail compose window, the LinkedIn note is copied by hand. Paid steps run only on a click."""
     import outreach as OUT
     s, _ = load_state()
-    cand = [j for j in s["jobs"].values() if "linkedin" in (j.get("boards") or []) and (s["archive"].get(j["key"]) or {}).get("status") in (None, "sent")]
+    cand = [j for j in s["jobs"].values() if (s["archive"].get(j["key"]) or {}).get("status") in (None, "sent", "auto")]
     cand.sort(key=lambda j: -(j.get("fit") or 0))
     if not cand:
-        st.info("אין משרות LinkedIn פתוחות.")
+        st.info("אין משרות.")
         return
     keys = [j["key"] for j in cand]
     pre = st.session_state.get("outreach_job")
