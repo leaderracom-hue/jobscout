@@ -756,6 +756,18 @@ def restore_many(keys, unblock=()):
     update_state(m, f"restore x{len(keys)}" + (f" unblock x{len(unblock)}" if unblock else ""))
 
 
+def force_back(keys):
+    """Assaf 21 Nov: bring jobs under the score threshold back to the inbox on purpose (forced = skip the MIN_FIT hide)."""
+    keys = list(keys)
+
+    def m(s):
+        for key in keys:
+            s["archive"].pop(key, None)
+            if key in s["jobs"]:
+                s["jobs"][key]["forced"] = True
+    update_state(m, f"force back x{len(keys)}")
+
+
 def mark(key, status):  # kept for older callers
     if status == "restore":
         restore_many([key])
@@ -1067,7 +1079,7 @@ def inbox_body():
     queue = s.get("queue", {})
     opn = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
     hidden = [j for j in opn if excluded(s, j)]  # the user's exclude words / blocked companies
-    opn = [j for j in opn if not excluded(s, j) and not (j.get("fit") is not None and j["fit"] < MIN_FIT)  # under MIN_FIT: never shown
+    opn = [j for j in opn if not excluded(s, j) and not (j.get("fit") is not None and j["fit"] < MIN_FIT and not j.get("forced"))  # under MIN_FIT: never shown unless he forced it back from the "below threshold" page
            and not (j.get("arr") and intl_reason(j, None))]  # outside Israel: English, fully remote, EN/HE only
     cfg = settings_of(s)
     CTX["followed"] = set(cfg["followed_companies"])
@@ -1524,6 +1536,55 @@ def page_archive():
             if st.button(f"↩ החזר לתיבה ({len(sel)})", key=f"restore_{st_}", disabled=not sel):
                 restore_many(sel)
                 st.rerun()
+
+
+def page_low():
+    """Assaf 21 Nov: jobs that scored under MIN_FIT, to review by hand and send anyway if he wants."""
+    s, _ = load_state()
+    cfg = settings_of(s)
+    CTX["followed"] = set(cfg["followed_companies"])
+    CTX["sent_by_co"] = {}
+    low = []
+    for k, a in s["archive"].items():
+        j = s["jobs"].get(k)
+        if a.get("status") == "auto" and j and j.get("fit") is not None and j["fit"] < MIN_FIT and a.get("reason") not in ("cyber", "excluded"):
+            low.append(j)
+    undo_bar()
+    st.caption(f"משרות שקיבלו ציון מתחת ל-{MIN_FIT}. עבור עליהן ידנית. ✓ שלחתי מסמן ושולח לארכיון, ו-↩ מחזיר לתיבה הראשית למרות הציון. "
+               f"משרות סייבר ומילים מסוננות לא מופיעות כאן.")
+    if not low:
+        st.info("אין משרות מתחת לסף.")
+        return
+    f1, f2, f3 = st.columns([3, 1.6, 2], vertical_alignment="center")
+    q = f1.text_input("חיפוש", placeholder="🔎 חברה או תפקיד…", key="low_q", label_visibility="collapsed")
+    lo_min = f2.selectbox("מציון", [0, 20, 30], format_func=lambda v: "כל הציונים" if not v else f"{v}+", key="low_min", label_visibility="collapsed")
+    view = f3.segmented_control("תצוגה", ["cards", "table"], format_func={"cards": "▦ כרטיסים", "table": "☰ טבלה"}.get, default="cards",
+                                key="low_view", label_visibility="collapsed") or "cards"
+    if q.strip():
+        ql = q.strip().lower()
+        low = [j for j in low if ql in str(j.get("title", "")).lower() or ql in str(j.get("company", "")).lower()]
+    low = sorted([j for j in low if (j.get("fit") or 0) >= lo_min], key=lambda j: (-(j.get("fit") or 0), str(j.get("company") or "")))
+    st.markdown(f"**{len(low)} משרות**")
+    if view == "table":
+        sel = job_table(low, key="tbl_low", height=620)
+        t1, t2, t3 = st.columns(3)
+        if t1.button(f"✓ שלחתי ({len(sel)})", key="low_t_sent", disabled=not sel, type="primary", width="stretch"):
+            mark_many(sel, "sent")
+            st.rerun()
+        if t2.button(f"↩ החזר לתיבה ({len(sel)})", key="low_t_back", disabled=not sel, width="stretch"):
+            force_back(sel)
+            st.rerun()
+        if t3.button(f"✕ הסר סופית ({len(sel)})", key="low_t_rm", disabled=not sel, width="stretch"):
+            mark_many(sel, "removed")
+            st.rerun()
+        return
+    for j in low[:60]:
+        card(j)
+        if st.button("↩ החזר לתיבה הראשית", key=f"fb-{j['key']}"):
+            force_back([j["key"]])
+            st.rerun()
+    if len(low) > 60:
+        st.caption(f"מוצגות 60 הראשונות מתוך {len(low)}. צמצם בחיפוש או עבור לתצוגת הטבלה.")
 
 
 def _pct(a, b):
@@ -2457,6 +2518,7 @@ PAGES = {
     "search": st.Page(page_search, title="חיפוש חדש", icon=":material/search:", url_path="search"),
     "stats": st.Page(page_stats, title="סטטיסטיקה", icon=":material/insights:", url_path="stats"),  # Assaf 19 Nov: above search history
     "tailor": st.Page(page_tailor, title="התאמת קו״ח", icon=":material/edit_document:", url_path="tailor"),
+    "low": st.Page(page_low, title="מתחת לסף", icon=":material/arrow_downward:", url_path="low"),
     "outreach": st.Page(page_outreach, title="פנייה ישירה", icon=":material/forward_to_inbox:", url_path="outreach"),
     "history": st.Page(page_history, title="היסטוריית חיפושים", icon=":material/history:", url_path="history"),
     "companies": st.Page(page_companies, title="חברות", icon=":material/apartment:", url_path="companies"),
