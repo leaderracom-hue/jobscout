@@ -45,8 +45,7 @@ WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע
 MIN_FIT = 40  # Assaf 19 Nov: threshold lowered 45 -> 40; a score under it goes straight to the archive ("auto") and is never shown
 HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
 BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "jobmaster": "JobMaster", "careers": "דף קריירה",
-         "workable": "Workable", "himalayas": "Himalayas", "remotive": "Remotive", "remoteok": "RemoteOK", "arbeitnow": "Arbeitnow",
-         "gofractional": "GoFractional", "remoteagg": "Remote aggregator"}
+         "himalayas": "Himalayas"}
 
 # Assaf 21 Nov: pastel palette, ~75% blue / 25% green, set once here and used everywhere (CSS variables + chart colors)
 PAL = {"blue": "#8EBCE6", "blue_l": "#DCECF9", "green": "#A8D8C0", "green_l": "#E1F2E8",
@@ -504,11 +503,9 @@ def archived(s, j):
 
 
 SOURCES = {"linkedin": "LinkedIn", "alljobs": "AllJobs", "jobmaster": "JobMaster", "drushim": "דרושים", "careers": "דפי קריירה",
-           # 21 Nov: free remote / EEA APIs (run only when EEA is selected)
-           "workable": "Workable", "himalayas": "Himalayas", "remotive": "Remotive", "remoteok": "RemoteOK", "arbeitnow": "Arbeitnow",
-           # paid (Apify), EEA only: projects and remote aggregator
-           "gofractional": "GoFractional", "remoteagg": "Remote aggregator"}
-EEA_SOURCES = {"workable", "himalayas", "remotive", "remoteok", "arbeitnow", "gofractional", "remoteagg"}
+           # 21 Nov (Assaf): the only extra remote / EEA source kept in the stack is Himalayas (free); career pages already cover Europe
+           "himalayas": "Himalayas"}
+EEA_SOURCES = {"himalayas"}
 IL_SOURCES = {"alljobs", "jobmaster", "drushim"}
 EMP_ARG = {"Full-Time": "full", "Part-Time": "part", "Contract": "contract", "Freelance": "freelance"}
 ARR_ARG = {"Remote": "remote", "Hybrid": "hybrid", "On-site": "onsite"}
@@ -525,7 +522,7 @@ def prefs_of(s):
 
 
 def engine_args(prefs):
-    a = ["--regions", ",".join(prefs.get("regions") or ["IL"]), "--boards", ",".join(prefs.get("sources") or list(SOURCES))]
+    a = ["--regions", ",".join(prefs.get("regions") or ["IL"]), "--boards", ",".join([x for x in (prefs.get("sources") or list(SOURCES)) if x in SOURCES] or list(SOURCES))]
     if prefs.get("arrangement"):
         a += ["--wt", ",".join(ARR_ARG[x] for x in prefs["arrangement"] if x in ARR_ARG)]
     if prefs.get("employment"):
@@ -1229,7 +1226,7 @@ def prefs_panel(s):
         if not regions:
             notes.append("בחר לפחות אזור אחד.")
         if "EEA" not in regions and set(src) & EEA_SOURCES:
-            notes.append("Workable, Himalayas, Remotive, RemoteOK ו-Arbeitnow הם לוחות של עבודה מרחוק, ורצים רק כשנבחר EEA.")
+            notes.append("Himalayas הוא לוח של עבודה מרחוק, ורץ רק כשנבחר EEA.")
         if regions == ["EEA"] and set(src) & IL_SOURCES:
             notes.append("AllJobs, JobMaster ודרושים הם לוחות ישראליים, ולא ירוצו כשנבחר רק EEA.")
         if "EEA" in regions:
