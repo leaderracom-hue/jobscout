@@ -2460,6 +2460,43 @@ def _job_block(j):
             f"REQUIREMENTS FROM THE EARLIER REVIEW: {json.dumps([q.get('requirement') for q in (j.get('reqs') or [])], ensure_ascii=False)}")
 
 
+SCAN_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["best", "ranking"], "properties": {
+    "best": {"type": "string"},
+    "ranking": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["cv_file", "match", "level", "reason"], "properties": {
+        "cv_file": {"type": "string"}, "match": {"type": "integer"}, "level": {"type": "string", "enum": ["none", "light", "moderate", "heavy"]},
+        "reason": {"type": "string"}}}}}}
+SCAN_LEVEL_HE = {"none": "ללא התאמה, מוכן להגשה", "light": "התאמה קלה", "moderate": "התאמה בינונית", "heavy": "התאמה משמעותית"}
+
+
+def cv_scan(j, lang):
+    """Assaf 22 Nov: before tailoring, read EVERY CV in the language folder and say which one fits this job best and how much tailoring it needs.
+    One cheap call: the job + the first part of every CV. Stored with the job, so each job is scanned once."""
+    import anthropic
+    files = cv_files(lang) or cv_files("en")
+    use = lang if cv_files(lang) else "en"
+    parts = []
+    for f in files:
+        try:
+            parts.append(f"=== CV FILE: {f}\n{cv_text(use, f)[:2200]}")
+        except Exception:
+            continue
+    client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"), max_retries=3)
+    r = client.messages.create(
+        model=MODEL, max_tokens=14000, output_config={"format": {"type": "json_schema", "schema": SCAN_SCHEMA}},
+        messages=[{"role": "user", "content": (
+            _job_block(j) + "\n\nBelow are ALL of Assaf's CVs. For each CV give match (0-100) = how well it already fits THIS job, and level = how much tailoring it needs: "
+            "none (80+, submit as is), light (65-79, keyword and wording tweaks), moderate (45-64, reorder and rewrite parts), heavy (under 45, a major rewrite; "
+            "usually another CV is a better base). reason = at most 12 Hebrew words. best = the cv_file name to start from. Rank all CVs, best first. "
+            "Use only what is written in each CV.\n\n" + "\n\n".join(parts))}])
+    track(r)
+    d = json.loads(next(b.text for b in r.content if getattr(b, "type", "") == "text"))
+    d["ranking"] = sorted([x for x in d["ranking"] if x["cv_file"] in files], key=lambda x: -x["match"])
+    if d["best"] not in files and d["ranking"]:
+        d["best"] = d["ranking"][0]["cv_file"]
+    d["at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+    return d
+
+
 def tailored_md(t):
     out = [f"# {t['name_line']}", f"**{t['headline']}**", "", "## Summary" if not re.search(r"[֐-׿]", t["summary"]) else "## תקציר", t["summary"], ""]
     out.append("## Experience" if not re.search(r"[֐-׿]", t["summary"]) else "## ניסיון")
@@ -2541,7 +2578,31 @@ def page_tailor():
     j = s["jobs"][k]
     lang = j.get("lang", "en")
     files = cv_files(lang) or cv_files("en")
-    base = st.selectbox("קורות החיים המקוריים", files, index=files.index(j["cv"]) if j.get("cv") in files else 0, key=f"tailor_cv_{k}")
+    scan = j.get("cvscan")
+    if not scan or st.session_state.pop(f"rescan_{k}", False):
+        with st.spinner("סורק את כל קורות החיים מול המשרה… (כ-20 שניות)"):
+            try:
+                scan = cv_scan(j, lang)
+                update_state(lambda st_: st_["jobs"].get(k, {}).__setitem__("cvscan", scan), f"cv scan: {k}")
+                st.session_state.pop(f"tailor_cv_{k}", None)
+            except Exception as e:
+                st.info(f"סריקת קורות החיים נכשלה: {str(e)[:150]}", icon="⚠️")
+                scan = None
+    if scan and scan.get("best") in files:
+        st.session_state.setdefault(f"tailor_cv_{k}", scan["best"])
+        top = scan["ranking"][0]
+        with st.container(border=True):
+            st.markdown(f"**המלצה:** להתחיל מ-**{scan['best'].replace('.pdf', '')}** · התאמה {top['match']} · {SCAN_LEVEL_HE.get(top['level'], top['level'])}  \n{top['reason']}")
+            with st.expander("כל קורות החיים שנסרקו"):
+                st.dataframe(pd.DataFrame([{"קורות חיים": x["cv_file"].replace(".pdf", ""), "התאמה": x["match"], "רמת התאמה נדרשת": SCAN_LEVEL_HE.get(x["level"], x["level"]),
+                                            "למה": x["reason"]} for x in scan["ranking"]]), hide_index=True, width="stretch",
+                             column_config={"התאמה": st.column_config.ProgressColumn("התאמה", min_value=0, max_value=100, format="%d")})
+            if st.button("↻ סרוק מחדש", key=f"rescan_btn_{k}"):
+                st.session_state[f"rescan_{k}"] = True
+                st.rerun()
+    st.session_state.setdefault(f"tailor_cv_{k}", j["cv"] if j.get("cv") in files else files[0])
+    base = st.selectbox("קורות החיים המקוריים", files, key=f"tailor_cv_{k}")
+
     try:
         orig = cv_text(lang if base in cv_files(lang) else "en", base)
     except Exception as e:
