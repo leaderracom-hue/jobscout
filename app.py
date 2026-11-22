@@ -310,14 +310,14 @@ def is_english_post(j):
     return en >= other * 1.5 and he < 30
 
 
-def intl_reason(j, sc):
+def intl_reason(j, sc, open_eu=False):
     """Assaf 21 Nov rule for jobs outside Israel: written in English, fully remote, no language required besides English and Hebrew.
     Returns why the job is out, or None when it may be shown (Israeli jobs always return None)."""
     if not is_international(j, sc):
         return None
     if not is_english_post(j):
         return "משרה בחו״ל שלא כתובה באנגלית"
-    if (sc or {}).get("arr", j.get("arr")) != "Remote":  # Assaf's rule: outside Israel ONLY jobs proven fully remote (22 Nov: an "Unknown" fix was tried and reverted)
+    if not open_eu and (sc or {}).get("arr", j.get("arr")) != "Remote":  # Assaf's rule: outside Israel ONLY jobs proven fully remote (22 Nov: an "Unknown" fix was tried and reverted)
         return "משרה בחו״ל שאינה מרחוק מלא"
     extra = [x for x in ((sc or {}).get("langs_req", j.get("langs_req")) or []) if str(x).strip().lower() not in ("english", "hebrew", "אנגלית", "עברית")]
     if extra:
@@ -547,7 +547,12 @@ EEA_SOURCES = {"himalayas"}
 IL_SOURCES = {"alljobs", "jobmaster", "drushim"}
 EMP_ARG = {"Full-Time": "full", "Part-Time": "part", "Contract": "contract", "Freelance": "freelance"}
 ARR_ARG = {"Remote": "remote", "Hybrid": "hybrid", "On-site": "onsite"}
-DEFAULT_PREFS = {"regions": ["IL"], "employment": [], "arrangement": [], "sources": list(SOURCES), "countries": []}
+DEFAULT_PREFS = {"regions": ["IL"], "employment": [], "arrangement": [], "sources": list(SOURCES), "countries": [], "eu_open": True}
+
+
+def _open_eu(prefs):
+    """Assaf 22 Nov: with EEA chosen, Europe is open to him (Polish citizen), not only remote-from-Israel jobs."""
+    return bool(prefs and "EEA" in (prefs.get("regions") or []) and prefs.get("eu_open", True))
 
 
 def prefs_of(s):
@@ -680,7 +685,7 @@ def search_core(kw, hours, batch, report, prefs=None):
                 st_["jobs"][k]["desc"] = str(j["desc"])[:3000]
             if is_gtm(j):
                 st_["jobs"][k]["gtm"] = True
-            out = intl_reason(j, scores.get(k)) if "fit" in scores.get(k, {}) else None  # outside Israel: English, fully remote, EN/HE only
+            out = intl_reason(j, scores.get(k), _open_eu(prefs)) if "fit" in scores.get(k, {}) else None  # outside Israel: English, fully remote, EN/HE only
             if out:
                 st_["archive"][k] = {"status": "auto", "reason": "intl", "note": out, "fit": fit, "at": now, "title": j["title"], "company": j.get("company"),
                                      "urls": list((j.get("links") or {"x": j.get("url")}).values())}
@@ -1307,7 +1312,7 @@ def inbox_body():
     opn = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
     hidden = [j for j in opn if excluded(s, j)]  # the user's exclude words / blocked companies
     opn = [j for j in opn if not excluded(s, j) and not (j.get("fit") is not None and j["fit"] < MIN_FIT and not j.get("forced"))  # under MIN_FIT: never shown unless he forced it back from the "below threshold" page
-           and not (j.get("arr") and intl_reason(j, None))]  # outside Israel: English, fully remote, EN/HE only
+           and not (j.get("arr") and intl_reason(j, None, _open_eu(prefs_of(s))))]  # outside Israel: English, fully remote, EN/HE only
     cfg = settings_of(s)
     CTX["followed"] = set(cfg["followed_companies"])
     CTX["sent_by_co"] = {}
@@ -1457,8 +1462,8 @@ def _preset(keys):
 def prefs_panel(s):
     """Assaf 21 Nov: search terms kept apart from keywords: region, employment type, work arrangement, sources. Saved with the data."""
     p = prefs_of(s)
-    for key, val in (("pf_regions", p["regions"]), ("pf_emp", p["employment"]), ("pf_arr", p["arrangement"]), ("pf_src", p["sources"]), ("pf_cty", p.get("countries", []))):
-        st.session_state.setdefault(key, list(val))
+    for key, val in (("pf_regions", p["regions"]), ("pf_emp", p["employment"]), ("pf_arr", p["arrangement"]), ("pf_src", p["sources"]), ("pf_cty", p.get("countries", [])), ("pf_eu_open", p.get("eu_open", True))):
+        st.session_state.setdefault(key, val if isinstance(val, bool) else list(val))
     with st.container(border=True):
         st.markdown("##### תנאים ומקורות")
         c1, c2 = st.columns(2)
@@ -1474,6 +1479,10 @@ def prefs_panel(s):
         if "EEA" in regions:
             countries = st.multiselect("מדינות באיחוד האירופי (ריק = כל האיחוד)", sorted(EU_COUNTRIES), key="pf_cty", placeholder="כל מדינות האיחוד האירופי",
                                        help="משרות שהמיקום שלהן מציין רק מדינות אחרות יוסרו בחינם לפני הדירוג. משרות בלי מדינה (מרחוק) נשארות.")
+        eu_open = True
+        if "EEA" in regions:
+            eu_open = st.toggle("🇪🇺 פתוח לעבודה באירופה, לא רק מרחוק מישראל", key="pf_eu_open",
+                                help="כבוי: משרות מחוץ לישראל נשארות רק אם הן מרחוק מלא. דלוק: גם משרות היברידיות ובאתר באירופה (אתה אזרח פולני).")
         notes = []
         if not regions:
             notes.append("בחר לפחות אזור אחד.")
@@ -1487,7 +1496,7 @@ def prefs_panel(s):
             notes.append("הסינון לפי סוג העסקה ואופי עבודה נעשה על ידי Claude שקורא כל משרה (LinkedIn החזיר 0 תוצאות כשהסינון נשלח אליו). מה שלא כתוב במשרה מסומן \"דורש אימות\".")
         for n in notes:
             st.caption(n)
-    new = {"regions": regions or ["IL"], "employment": emp, "arrangement": arr, "sources": src or list(SOURCES), "countries": countries}
+    new = {"regions": regions or ["IL"], "employment": emp, "arrangement": arr, "sources": src or list(SOURCES), "countries": countries, "eu_open": eu_open}
     return new
 
 
@@ -1540,6 +1549,7 @@ def page_search():
         if f"kwg_{i}" not in st.session_state:
             st.session_state[f"kwg_{i}"] = []
         picked += st.pills(g, items, format_func=lbl, selection_mode="multi", key=f"kwg_{i}") or []
+    st.session_state.setdefault("kw_free", "automation product manager")  # Assaf 22 Nov: default extra keyword
     free = st.text_input("מילים נוספות (מופרדות בפסיק)", key="kw_free", placeholder="למשל: revops, מנהל CRM")
     kws = list(dict.fromkeys(picked + [w.strip().lower() for w in free.split(",") if w.strip()]))
 
