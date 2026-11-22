@@ -1191,6 +1191,20 @@ def _save_cover(fn, text, rtl):
         pass
 
 
+def _save_resume(fn, md, lang):
+    """Copy of the tailored CV PDF into resume/<en|he>/ in the private data repo; the local sync script puts it in the Resume English or Hebrew folder."""
+    try:
+        from cv_pdf import cv_pdf
+        url = gh_url(f"resume/{lang}/{fn}")
+        old = requests.get(url, headers=gh_headers(), timeout=20)
+        body = {"message": "tailored cv " + fn, "content": base64.b64encode(cv_pdf(md)).decode()}
+        if old.status_code == 200:
+            body["sha"] = old.json()["sha"]
+        requests.put(url, headers=gh_headers(), json=body, timeout=40)
+    except Exception:
+        pass
+
+
 def _cover_docx(text, rtl):
     """Plain Word letter: the edited text, paragraphs kept, right-to-left for Hebrew."""
     import io
@@ -2619,7 +2633,10 @@ def page_tailor():
         stem = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{base.replace('.pdf', '')}-{j.get('company') or 'job'}")[:80]
         try:  # Assaf 22 Nov: PDF in his CV design (Assaf-GTM-AI-Dev-v2) is the default download
             from cv_pdf import cv_pdf
-            e0.download_button("⬇ PDF (העיצוב שלי)", cv_pdf(edited), file_name=f"{stem}.pdf", width="stretch", type="primary", mime="application/pdf")
+            _he = bool(re.search(r"[֐-׿]", edited))
+            e0.download_button("⬇ PDF (העיצוב שלי)", cv_pdf(edited), file_name=f"{stem}.pdf", width="stretch", type="primary", mime="application/pdf",
+                               on_click=_save_resume, args=(f"{stem}.pdf", edited, "he" if _he else "en"))
+            e0.caption("עותק נשמר גם בתיקיית Resume של " + ("עברית" if _he else "אנגלית") + " (דרך Sync-Cover-Letters.bat)")
         except Exception as e:
             e0.caption(f"ה-PDF נכשל: {str(e)[:80]}")
         e1.download_button("⬇ Word", docx_bytes(edited), file_name=f"{stem}.docx", width="stretch",
