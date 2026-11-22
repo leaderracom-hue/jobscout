@@ -317,7 +317,7 @@ def intl_reason(j, sc):
         return None
     if not is_english_post(j):
         return "משרה בחו״ל שלא כתובה באנגלית"
-    if (sc or {}).get("arr", j.get("arr")) in ("Hybrid", "On-site"):  # 22 Nov: "Unknown" is NOT proof of on-site - it stays and is marked "needs verification"
+    if (sc or {}).get("arr", j.get("arr")) != "Remote":  # Assaf's rule: outside Israel ONLY jobs proven fully remote (22 Nov: an "Unknown" fix was tried and reverted)
         return "משרה בחו״ל שאינה מרחוק מלא"
     extra = [x for x in ((sc or {}).get("langs_req", j.get("langs_req")) or []) if str(x).strip().lower() not in ("english", "hebrew", "אנגלית", "עברית")]
     if extra:
