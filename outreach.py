@@ -39,14 +39,23 @@ def sp_search(key, company, domain, title_words=None, country=None, limit=25):
     r = requests.post(f"{SP}/search-contacts", params={"api_key": key}, json=body, timeout=40)
     r.raise_for_status()
     d = r.json()
+    dd = d.get("data") if isinstance(d.get("data"), dict) else d
     out = []
-    for c in (d.get("data") or d.get("list") or d.get("contacts") or []):
+    for c in _sp_list(dd):
         site = str((c.get("company") or {}).get("website") or c.get("website") or "").lower()
         if domain and domain.lower() not in site:  # matching is loose, keep only the real domain
             continue
-        out.append({"name": " ".join(filter(None, [c.get("first_name"), c.get("last_name")])) or c.get("name") or c.get("full_name"),
-                    "title": c.get("title"), "deliv": c.get("emailDeliverability"), "raw_id": c.get("id")})
-    return {"people": [p for p in out if p["name"]], "filter_id": d.get("filter_id"), "total": d.get("total_count")}
+        out.append({"name": _sp_name(c), "title": c.get("title"), "deliv": c.get("emailDeliverability"), "raw_id": c.get("id")})
+    return {"people": [p for p in out if p["name"]], "filter_id": dd.get("filter_id"), "total": dd.get("total_count")}
+
+
+def _sp_list(dd):
+    x = dd.get("list") or dd.get("contacts") or dd.get("data") or []
+    return [c for c in x if isinstance(c, dict)]
+
+
+def _sp_name(c):
+    return c.get("fullName") or " ".join(filter(None, [c.get("firstName") or c.get("first_name"), c.get("lastName") or c.get("last_name")])) or c.get("name") or c.get("full_name") or ""
 
 
 def sp_unlock(key, filter_id, name):
@@ -54,8 +63,9 @@ def sp_unlock(key, filter_id, name):
     r = requests.post(f"{SP}/fetch-contacts", params={"api_key": key}, json={"filter_id": filter_id, "limit": 25, "visual_limit": 25}, timeout=60)
     r.raise_for_status()
     d = r.json()
-    for c in (d.get("data") or d.get("list") or d.get("contacts") or []):
-        nm = " ".join(filter(None, [c.get("first_name"), c.get("last_name")])) or c.get("name") or ""
+    dd = d.get("data") if isinstance(d.get("data"), dict) else d
+    for c in _sp_list(dd):
+        nm = _sp_name(c)
         if nm.strip().lower() == (name or "").strip().lower() and c.get("email") and "random" not in c["email"]:
             return c["email"]
     return None
