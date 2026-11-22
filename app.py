@@ -2497,6 +2497,52 @@ def cv_scan(j, lang):
     return d
 
 
+def tailor_log_add(j, cv, text, how):
+    """Assaf 22 Nov: every tailored version is kept in the history (newest first, last 100)."""
+    entry = {"id": uuid.uuid4().hex[:10], "key": j["key"], "title": j.get("title"), "company": j.get("company"), "cv": cv, "how": how,
+             "lang": "he" if re.search(r"[\u0590-\u05ff]", text) else "en", "at": dt.datetime.now(dt.timezone.utc).isoformat(), "text": text}
+
+    def m(st_):
+        st_["tailor_log"] = [entry] + (st_.get("tailor_log") or [])[:99]
+    update_state(m, f"tailor log: {j['key'][:30]}")
+
+
+def tailor_history(s):
+    log = s.get("tailor_log") or []
+    with st.expander(f"📚 היסטוריית התאמות ({len(log)})"):
+        if not log:
+            st.caption("עוד אין התאמות. כל גרסה מותאמת שנוצרת נשמרת כאן אוטומטית.")
+            return
+        q = st.text_input("חיפוש", placeholder="🔎 חברה או תפקיד…", key="tl_q", label_visibility="collapsed")
+        rows = [e for e in log if not q.strip() or q.strip().lower() in f"{e.get('title')} {e.get('company')} {e.get('cv')}".lower()]
+        df = pd.DataFrame([{"תאריך": to_il(e["at"]).strftime("%d.%m %H:%M"), "משרה": e.get("title") or "", "חברה": e.get("company") or "",
+                            "קורות חיים בסיס": str(e.get("cv", "")).replace(".pdf", ""), "שפה": "עב" if e.get("lang") == "he" else "EN",
+                            "סוג": {"generated": "נוצר", "saved": "נשמר אחרי עריכה"}.get(e.get("how"), e.get("how"))} for e in rows])
+        ev = st.dataframe(df, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", key="tl_tbl", height=min(38 + 35 * len(rows), 330))
+        if not (ev and ev.selection and ev.selection.rows):
+            st.caption("בחר שורה כדי לראות את הגרסה ולהוריד אותה.")
+            return
+        e = rows[ev.selection.rows[0]]
+        st.text_area("הטקסט", value=e["text"], height=260, key=f"tl_txt_{e['id']}")
+        stem = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{str(e.get('cv', '')).replace('.pdf', '')}-{e.get('company') or 'job'}")[:80]
+        d1, d2, d3, d4, d5 = st.columns(5)
+        try:
+            from cv_pdf import cv_pdf
+            d1.download_button("⬇ PDF", cv_pdf(e["text"]), file_name=f"{stem}.pdf", mime="application/pdf", key=f"tl_pdf_{e['id']}", width="stretch", type="primary")
+        except Exception as ex:
+            d1.caption(f"PDF: {str(ex)[:60]}")
+        d2.download_button("⬇ Word", docx_bytes(e["text"]), file_name=f"{stem}.docx", key=f"tl_doc_{e['id']}", width="stretch",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        d3.download_button("⬇ Markdown", e["text"].encode("utf-8"), file_name=f"{stem}.md", key=f"tl_md_{e['id']}", width="stretch")
+        if d4.button("↗ פתח את המשרה", key=f"tl_job_{e['id']}", width="stretch", disabled=e["key"] not in s["jobs"]):
+            st.session_state.tailor_job = e["key"]
+            st.session_state.pop("tailor_pick", None)
+            st.rerun()
+        if d5.button("🗑 מחק", key=f"tl_del_{e['id']}", width="stretch"):
+            update_state(lambda st_: st_.__setitem__("tailor_log", [x for x in (st_.get("tailor_log") or []) if x["id"] != e["id"]]), "tailor log delete")
+            st.rerun()
+
+
 def tailored_md(t):
     out = [f"# {t['name_line']}", f"**{t['headline']}**", "", "## Summary" if not re.search(r"[֐-׿]", t["summary"]) else "## תקציר", t["summary"], ""]
     out.append("## Experience" if not re.search(r"[֐-׿]", t["summary"]) else "## ניסיון")
@@ -2571,6 +2617,7 @@ def page_tailor():
     if not cand:
         st.info("אין משרות פתוחות. התאמת קו״ח פועלת על משרה מהתיבה.")
         return
+    tailor_history(s)
     keys = [j["key"] for j in cand]
     pre = st.session_state.get("tailor_job")
     k = st.selectbox("משרה", keys, index=keys.index(pre) if pre in keys else 0,
@@ -2678,6 +2725,10 @@ def page_tailor():
                 S["t"] = t
                 S["md"] = tailored_md(t)
                 st.session_state[f"t_edit_{k}|{base}"] = S["md"]
+                try:
+                    tailor_log_add(j, base, S["md"], "generated")
+                except Exception:
+                    pass
             except Exception as e:
                 st.info(f"היצירה נכשלה: {str(e)[:200]}", icon="⚠️")
     if not S.get("t"):
@@ -2706,6 +2757,7 @@ def page_tailor():
         if e3.button("💾 שמור לאפליקציה", width="stretch", help="נשמר עם המשרה, כדי לחזור אליו אחר כך"):
             update_state(lambda st_: st_.setdefault("tailored", {}).__setitem__(k, {"at": dt.datetime.now(dt.timezone.utc).isoformat(), "cv": base, "text": edited}),
                          f"tailored cv: {k}")
+            tailor_log_add(j, base, edited, "saved")
             st.success("נשמר")
     with t2:
         st.caption("ירוק = נוסף או נוסח מחדש · אפור מחוק = הוסר מהמקור")
