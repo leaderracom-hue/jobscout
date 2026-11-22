@@ -1499,7 +1499,7 @@ def save_prefs(new):
 
 def page_search():
     s, _ = load_state()
-    cap = int(secret("MAX_SEARCHES_PER_DAY", 30))
+    cap = 60
     b, info = active_batch()
     running = bool(info and not info["done"])
     if info:
@@ -2971,7 +2971,7 @@ with st.sidebar:
     sent_n = sent_today(state)
     st.progress(min(1.0, sent_n / max(1, goal)), text=f"נשלחו היום **{sent_n}** / {goal}")
     open_n = sum(1 for j in state["jobs"].values() if j["key"] not in state["archive"] and j["key"] not in state.get("queue", {}))
-    cap = int(secret("MAX_SEARCHES_PER_DAY", 30))
+    cap = 60
     flush_usage()
     _u = (state.get("usage") or {}).get(dt.datetime.now(IL).strftime("%Y-%m"), {})
     _p = SH.get("usage_pending") or {}
