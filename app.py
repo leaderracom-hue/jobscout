@@ -1556,7 +1556,7 @@ def ask_search(rows, label, question, prior):
     """Assaf 21 Nov: ask Claude about ONE search (the jobs it returned). Cheapest model; compact table of the results."""
     import anthropic
     client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"))
-    lines = ["title|company|fit|status|why"] + [f"{j.get('title')}|{j.get('company')}|{j.get('fit')}|{j['_st']}|{(j.get('why') or '')[:140]}" for j in rows[:90]]
+    lines = ["title|company|fit|status|why"] + [f"{j.get('title')}|{j.get('company')}|{j.get('fit')}|{j['_st']}|{(j.get('why') or '')[:110]}" for j in rows[:400]]
     system = (BRAIN + "\n\n---\nYou answer Assaf's questions about ONE search he ran in Job Scout: " + label + ". Below are the jobs it returned. Answer in simple, "
               "natural Hebrew, male second person, keep tool names in English, concrete and short. Use only this data, compute exactly, say when it cannot "
               "answer.\n\nRESULTS:\n" + "\n".join(lines))
@@ -1564,7 +1564,7 @@ def ask_search(rows, label, question, prior):
     for q, a in prior[-4:]:
         msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
     msgs.append({"role": "user", "content": question})
-    r = client.messages.create(model=MODEL, max_tokens=4000, system=system, messages=msgs)
+    r = client.messages.create(model=MODEL, max_tokens=6000, system=system, messages=msgs)
     track(r)
     return "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip() or "(אין תשובה)"
 
