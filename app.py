@@ -1502,6 +1502,17 @@ def page_search():
                         SH["batches"][b]["closed"] = True
                     st.rerun()
 
+    # Assaf 22 Nov: ask Claude about the results of the current / last search
+    runs_all = s.get("runs", [])
+    grp = b if any((r.get("batch") or r["at"]) == b for r in runs_all) else ((runs_all[0].get("batch") or runs_all[0]["at"]) if runs_all else None)
+    if grp:
+        gruns = [r for r in runs_all if (r.get("batch") or r["at"]) == grp]
+        gkeys = list(dict.fromkeys(k for r in gruns for k in (r.get("keys") or [])))
+        if gkeys:
+            glabel = ", ".join(lbl(k) for k in dict.fromkeys(r["kw"] for r in gruns)) + " · " + to_il(min(r["at"] for r in gruns)).strftime("%d.%m %H:%M")
+            with st.expander(f"✨ שאל את התוצאות · {glabel} ({len(gkeys)} משרות)", expanded=bool(st.session_state.get("ask_search_hist", {}).get(grp))):
+                search_ask_panel(grp, gkeys, glabel, s)
+
     prefs = prefs_panel(s)
     st.markdown("##### מילות חיפוש")
     p = st.columns(5)
