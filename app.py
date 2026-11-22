@@ -2615,9 +2615,14 @@ def page_tailor():
     t1, t2, t3, t4 = st.tabs(["✏️ עריכה", "🔀 שינויים מול המקור", "📊 בדיקת ATS", "📝 מה שונה ולמה"])
     with t1:
         edited = st.text_area("הגרסה המותאמת (אפשר לערוך)", key=f"t_edit_{k}|{base}", height=520)
-        e1, e2, e3 = st.columns(3)
+        e0, e1, e2, e3 = st.columns(4)
         stem = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{base.replace('.pdf', '')}-{j.get('company') or 'job'}")[:80]
-        e1.download_button("⬇ Word", docx_bytes(edited), file_name=f"{stem}.docx", width="stretch", type="primary",
+        try:  # Assaf 22 Nov: PDF in his CV design (Assaf-GTM-AI-Dev-v2) is the default download
+            from cv_pdf import cv_pdf
+            e0.download_button("⬇ PDF (העיצוב שלי)", cv_pdf(edited), file_name=f"{stem}.pdf", width="stretch", type="primary", mime="application/pdf")
+        except Exception as e:
+            e0.caption(f"ה-PDF נכשל: {str(e)[:80]}")
+        e1.download_button("⬇ Word", docx_bytes(edited), file_name=f"{stem}.docx", width="stretch",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
         e2.download_button("⬇ Markdown", edited.encode("utf-8"), file_name=f"{stem}.md", width="stretch")
         if e3.button("💾 שמור לאפליקציה", width="stretch", help="נשמר עם המשרה, כדי לחזור אליו אחר כך"):
