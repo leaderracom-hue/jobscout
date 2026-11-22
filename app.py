@@ -2806,6 +2806,16 @@ def _out_draft(j, contact):
 
 
 def page_outreach():
+    st.markdown("### 👤 פנייה ישירה")
+    try:
+        _page_outreach()
+    except Exception as e:
+        if type(e).__name__ in ("RerunException", "StopException"):
+            raise
+        st.error(f"שגיאה בעמוד: {type(e).__name__}: {str(e)[:300]}")
+
+
+def _page_outreach():
     """Assaf 21 Nov: find the poster, find + verify the email, review the drafts. Nothing is sent from here: the email opens in
     his own Gmail compose window, the LinkedIn note is copied by hand. Paid steps run only on a click."""
     import outreach as OUT
