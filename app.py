@@ -335,9 +335,36 @@ def lang_of(j):
 
 
 def cv_pool(kw, lang):
+    """Assaf 24 Nov: ALL CVs of the language are candidates (the old per-keyword list never let a new CV win); the CV brain decides."""
     have = cv_files(lang)
-    listed = [f for f in (DICT.get(kw, {}).get("cv", {}).get(lang) or []) if f in have]
-    return listed or [f for f in have if not re.search(r"cover|customer.?support|appointment|admin", f, re.I)]
+    return [f for f in have if not re.search(r"cover|customer.?support|appointment|admin", f, re.I)]
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def cv_brain():
+    """cv/brain.json in the data repo: one profile per CV (positioning, target roles, ATS keywords, proof, choose_when, weak_for) + routing rules."""
+    try:
+        r = requests.get(gh_url("cv/brain.json"), headers=gh_headers(True), timeout=30)
+        return r.json() if r.ok else {}
+    except Exception:
+        return {}
+
+
+def brain_block(lang, files):
+    """Compact catalog of the CVs in `files`, for the prompts that choose a CV."""
+    b = cv_brain()
+    if not b:
+        return ""
+    out = [b.get("rules", ""), "", "CV CATALOG (choose cv_file only from here):"]
+    for f in files:
+        p = (b.get("profiles") or {}).get(f"{lang}/{f}")
+        if not p:
+            out.append(f"- {f}")
+            continue
+        out.append(f"- {f} [{p['family']}] {p['positioning']} | roles: {'; '.join(p['target_roles'][:6])} | keywords: {', '.join(p['ats_keywords'][:12])} | "
+                   f"tools: {', '.join(p['key_tools'][:8])} | choose when: {p['choose_when']} | weak for: {p['weak_for']}"
+                   + (f" | near duplicate of: {', '.join(p['near_duplicates'])}" if p.get("near_duplicates") else ""))
+    return "\n".join(out)
 
 
 EMP_TYPES = ["Full-Time", "Part-Time", "Contract", "Freelance"]
@@ -398,7 +425,7 @@ Candidate eligibility facts: lives in Tel Aviv, Israel. Israeli citizen AND Poli
 5. eligibility_status: not_eligible only when the post PROVES a hard conflict (e.g. must live in the US, on-site in Berlin with no relocation, local citizenship he lacks). needs_verification when something material is not stated. eligible when terms are clear and fit his facts. eligibility_match 0-100 follows: eligible 85-100, needs_verification 50-75, not_eligible 0-25.
 6. verdict follows professional_match and eligibility: Apply now (80+ and not not_eligible), Apply (60-79), Maybe (40-59), Skip (<40 or not_eligible).
 7. why_he: ONE short sentence in simple, natural Hebrew (max 18 words), male second person ("יש לך…"): the main reason it fits, then the main gap after "פער:". Tool names in English. Never state how many years or months he has. Hebrew letters, English and digits only.
-8. gaps: up to 4 short Hebrew items. cv_file: copy exactly one file name from the list given.
+8. gaps: up to 4 short Hebrew items. cv_file: copy exactly one file name from the CV CATALOG. Pick it by the rules in the catalog: the job's function decides the family, then the CV whose target roles and keywords overlap most with the post's title and stated requirements; never a CV whose weak_for matches this post.
 """
 
 
@@ -495,7 +522,7 @@ def score_job(j, kw, prefs=None):
     """Assaf 21 Nov: two independent reviews with the same documented rubric + a tie-break when they differ by more than 10."""
     lang = lang_of(j)
     pool = cv_pool(kw, lang)
-    system = [{"type": "text", "text": BRAIN + "\n" + RUBRIC, "cache_control": {"type": "ephemeral"}}]
+    system = [{"type": "text", "text": BRAIN + "\n" + RUBRIC + "\n\n" + brain_block(lang, pool), "cache_control": {"type": "ephemeral"}}]
     post = _post_text(j, pool)
     a_user = post + "\n\nReview this post against the candidate with the scoring method. Return the JSON."
     b_user = ("Independent second review. Do not assume any earlier score. Re-read the post from the top: first list every requirement "
@@ -2488,10 +2515,11 @@ def cv_scan(j, lang):
     import anthropic
     files = cv_files(lang) or cv_files("en")
     use = lang if cv_files(lang) else "en"
-    parts = []
+    files = [f for f in files if not re.search(r"cover|customer.?support|appointment|admin", f, re.I)]
+    parts = [brain_block(use, files), ""]  # Assaf 24 Nov: the CV brain (profile + rules per CV) first, then the opening of each CV
     for f in files:
         try:
-            parts.append(f"=== CV FILE: {f}\n{cv_text(use, f)[:2200]}")
+            parts.append(f"=== CV FILE: {f}\n{cv_text(use, f)[:1400]}")
         except Exception:
             continue
     client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"), max_retries=3)
