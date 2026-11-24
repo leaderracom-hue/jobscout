@@ -36,7 +36,8 @@ KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm prod
             "product operations", "crm product", "lifecycle marketing", "טרנספורמציה דיגיטלית", "מנהל חדשנות", "מנהל מערכות שיווק",
             # Assaf 24 Nov: 4 more
             "gtm automation", "hubspot", "campaign manager", "media buyer", "sales ai solution",
-            "ai sales", "ai solutions sales", "מנהל מכירות פתרונות ai", "account executive ai", "business development ai", "solutions consultant ai"]
+            "ai sales", "ai solutions sales", "מנהל מכירות פתרונות ai", "account executive ai", "business development ai", "solutions consultant ai",
+            "workflow ai", "customer success manager"]
 LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automation", "product marketing": "Product Marketing",
          "gtm product": "GTM Product", "gtm ai": "GTM AI", "gtm engineer": "GTM Engineer", "ai builder": "AI Builder", "ai automation": "AI Automation", "automation": "Automation",
          "crm integration": "CRM Integration", "crm automation": "CRM Automation", "ai trainer": "AI Trainer", "freelancer": "Freelancer", "מנהל מוצר": "מנהל מוצר", "מנהל מוצר אוטומציות": "מנהל מוצר אוטומציות", "אוטומציות שיווק": "אוטומציות שיווק", "מנהל פרויקט אוטומציות": "מנהל פרויקט אוטומציות",
@@ -46,7 +47,7 @@ LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automati
          "מנהל חדשנות": "מנהל חדשנות", "מנהל מערכות שיווק": "מנהל מערכות שיווק",
          "gtm automation": "GTM Automation", "hubspot": "HubSpot", "campaign manager": "Campaign Manager", "media buyer": "Media Buyer", "sales ai solution": "Sales AI Solution", "ai sales": "AI Sales", "ai solutions sales": "AI Solutions Sales",
          "מנהל מכירות פתרונות ai": "מנהל מכירות פתרונות AI", "account executive ai": "Account Executive AI", "business development ai": "Business Development AI",
-         "solutions consultant ai": "Solutions Consultant AI"}
+         "solutions consultant ai": "Solutions Consultant AI", "workflow ai": "Workflow AI", "customer success manager": "Customer Success Manager"}
 WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע"}
 MIN_FIT = 40  # Assaf 19 Nov: threshold lowered 45 -> 40; a score under it goes straight to the archive ("auto") and is never shown
 HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
@@ -772,9 +773,10 @@ def start_batch(kws, hours, prefs=None):
 GROUPS = {
     "מוצר": ["מנהל מוצר", "product ai", "ai product owner", "technical product manager", "data product manager", "product operations", "product marketing"],
     "אוטומציה ושיווק": ["מנהל מוצר אוטומציות", "marketing automation", "אוטומציות שיווק", "מנהל פרויקט אוטומציות", "automation", "lifecycle marketing", "מנהל מערכות שיווק"],
-    "AI": ["ai builder", "ai automation", "מיישם פתרונות ai", "ai implementation", "ai solutions"],
+    "AI": ["ai builder", "ai automation", "workflow ai", "מיישם פתרונות ai", "ai implementation", "ai solutions"],
     "CRM": ["crm product", "crm integration", "crm automation", "hubspot"],
     "פרסום וקמפיינים": ["campaign manager", "media buyer"],
+    "הצלחת לקוח": ["customer success manager"],
     "מכירות ו-Pre-sales": ["sales ai solution", "ai sales", "ai solutions sales", "מנהל מכירות פתרונות ai", "account executive ai", "business development ai", "solutions consultant ai"],
     "GTM ועוד": ["gtm product", "gtm ai", "gtm engineer", "gtm automation", "טרנספורמציה דיגיטלית", "מנהל חדשנות"],
 }
