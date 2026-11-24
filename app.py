@@ -38,7 +38,8 @@ KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm prod
             "gtm automation", "hubspot", "campaign manager", "media buyer", "sales ai solution",
             "ai sales", "ai solutions sales", "מנהל מכירות פתרונות ai", "account executive ai", "business development ai", "solutions consultant ai",
             "workflow ai", "customer success manager",
-            "נציג שירות מהבית", "עבודה מהבית", "remote customer support", "נציג שימור"]
+            "נציג שירות מהבית", "עבודה מהבית", "remote customer support", "נציג שימור",
+            "ai trainer", "n8n freelance", "crm setup freelance"]
 LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automation", "product marketing": "Product Marketing",
          "gtm product": "GTM Product", "gtm ai": "GTM AI", "gtm engineer": "GTM Engineer", "ai builder": "AI Builder", "ai automation": "AI Automation", "automation": "Automation",
          "crm integration": "CRM Integration", "crm automation": "CRM Automation", "ai trainer": "AI Trainer", "freelancer": "Freelancer", "מנהל מוצר": "מנהל מוצר", "מנהל מוצר אוטומציות": "מנהל מוצר אוטומציות", "אוטומציות שיווק": "אוטומציות שיווק", "מנהל פרויקט אוטומציות": "מנהל פרויקט אוטומציות",
@@ -49,7 +50,7 @@ LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automati
          "gtm automation": "GTM Automation", "hubspot": "HubSpot", "campaign manager": "Campaign Manager", "media buyer": "Media Buyer", "sales ai solution": "Sales AI Solution", "ai sales": "AI Sales", "ai solutions sales": "AI Solutions Sales",
          "מנהל מכירות פתרונות ai": "מנהל מכירות פתרונות AI", "account executive ai": "Account Executive AI", "business development ai": "Business Development AI",
          "solutions consultant ai": "Solutions Consultant AI", "workflow ai": "Workflow AI", "customer success manager": "Customer Success Manager", "נציג שירות מהבית": "נציג שירות מהבית", "עבודה מהבית": "עבודה מהבית",
-         "remote customer support": "Remote Customer Support", "נציג שימור": "נציג שימור"}
+         "remote customer support": "Remote Customer Support", "נציג שימור": "נציג שימור", "n8n freelance": "n8n Freelance", "crm setup freelance": "CRM Setup Freelance"}
 WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע"}
 MIN_FIT = 40  # Assaf 19 Nov: threshold lowered 45 -> 40; a score under it goes straight to the archive ("auto") and is never shown
 HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
@@ -791,6 +792,7 @@ GROUPS = {
     "פרסום וקמפיינים": ["campaign manager", "media buyer"],
     "הצלחת לקוח": ["customer success manager"],
     "עבודה זמנית מהבית": ["נציג שירות מהבית", "עבודה מהבית", "remote customer support", "נציג שימור"],
+    "הכנסה מהירה (פרילנס / AI)": ["ai trainer", "n8n freelance", "crm setup freelance"],
     "מכירות ו-Pre-sales": ["sales ai solution", "ai sales", "ai solutions sales", "מנהל מכירות פתרונות ai", "account executive ai", "business development ai", "solutions consultant ai"],
     "GTM ועוד": ["gtm product", "gtm ai", "gtm engineer", "gtm automation", "טרנספורמציה דיגיטלית", "מנהל חדשנות"],
 }
