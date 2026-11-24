@@ -139,7 +139,10 @@ const EXC = DICT._exclude || { titles: [], industries: [], companies: [] };
 const reEsc = w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const wordRx = list => list.length ? new RegExp(list.map(w => /^[\x00-\x7f]+$/.test(w) ? `\\b${reEsc(w)}\\b` : reEsc(w)).join("|"), "i") : /$^/; // Latin words on word edges
 const CYBER_T = wordRx(EXC.titles), CYBER_C = wordRx(EXC.companies), CYBER_I = wordRx(EXC.industries);
-const isCyber = (j, it = {}) => CYBER_T.test(j.title || "") || CYBER_C.test(j.company || "") || CYBER_I.test([it.sector, ...(it.companyIndustries ? [].concat(it.companyIndustries) : [])].join(" "));
+const MED = DICT._exclude_medical || { titles: [], industries: [], companies: [] }; // Assaf 24 Nov: no medical jobs
+const MED_T = wordRx(MED.titles), MED_C = wordRx(MED.companies), MED_I = wordRx(MED.industries);
+const isCyber = (j, it = {}) => CYBER_T.test(j.title || "") || CYBER_C.test(j.company || "") || CYBER_I.test([it.sector, ...(it.companyIndustries ? [].concat(it.companyIndustries) : [])].join(" "))
+  || MED_T.test(j.title || "") || MED_C.test(j.company || "") || MED_I.test([it.sector, ...(it.companyIndustries ? [].concat(it.companyIndustries) : [])].join(" "));
 // Hebrew boards write vague titles ("מנהל/ת E-commerce") and put the substance in the description:
 // there a "maybe" title passes when the description names at least 2 different terms from the keyword's list.
 const DESC_BOARDS = new Set(["linkedin", "drushim", "drushimapify", "alljobs", "jobmaster", "gofractional", "remoteagg"]); // linkedin too: its search matches descriptions

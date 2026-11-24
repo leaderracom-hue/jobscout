@@ -224,6 +224,15 @@ CYBER_CO = _list_rx((DICT.get("_exclude") or {}).get("companies", []))
 CYBER_TI = _list_rx((DICT.get("_exclude") or {}).get("titles", []))
 
 
+MED_CO = _list_rx((DICT.get("_exclude_medical") or {}).get("companies", []))
+MED_TI = _list_rx((DICT.get("_exclude_medical") or {}).get("titles", []))
+
+
+def is_medical(j):
+    """Assaf 24 Nov: no medical / healthcare-clinical jobs (title words and company names; the engine also checks the LinkedIn industry)."""
+    return bool((MED_CO and MED_CO.search(str(j.get("company") or "").lower())) or (MED_TI and MED_TI.search(str(j.get("title") or "").lower())))
+
+
 def is_cyber(j):
     """Safety net in the app (Assaf 19 Nov): the engine's cyber lists, checked again here. Cyber beats every other rule, GTM included."""
     return bool((CYBER_CO and CYBER_CO.search(str(j.get("company") or "").lower())) or (CYBER_TI and CYBER_TI.search(str(j.get("title") or "").lower())))
@@ -274,6 +283,8 @@ def excluded(s, j):
     cfg = settings_of(s)
     if is_cyber(j):
         return "סייבר"
+    if is_medical(j):
+        return "רפואה"
     ck = company_key(j.get("company"))
     if ck and ck in cfg["blocked_companies"]:
         return f"חברה חסומה: {j.get('company')}"
