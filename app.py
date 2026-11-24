@@ -33,14 +33,17 @@ KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm prod
             "automation", "crm integration", "crm automation", "מנהל מוצר", "מנהל מוצר אוטומציות", "אוטומציות שיווק", "מנהל פרויקט אוטומציות",
             # Assaf 18 Nov: 12 more
             "מיישם פתרונות ai", "ai implementation", "ai solutions", "ai product owner", "technical product manager", "data product manager",
-            "product operations", "crm product", "lifecycle marketing", "טרנספורמציה דיגיטלית", "מנהל חדשנות", "מנהל מערכות שיווק"]
+            "product operations", "crm product", "lifecycle marketing", "טרנספורמציה דיגיטלית", "מנהל חדשנות", "מנהל מערכות שיווק",
+            # Assaf 24 Nov: 4 more
+            "gtm automation", "hubspot", "campaign manager", "media buyer"]
 LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automation", "product marketing": "Product Marketing",
          "gtm product": "GTM Product", "gtm ai": "GTM AI", "gtm engineer": "GTM Engineer", "ai builder": "AI Builder", "ai automation": "AI Automation", "automation": "Automation",
          "crm integration": "CRM Integration", "crm automation": "CRM Automation", "ai trainer": "AI Trainer", "freelancer": "Freelancer", "מנהל מוצר": "מנהל מוצר", "מנהל מוצר אוטומציות": "מנהל מוצר אוטומציות", "אוטומציות שיווק": "אוטומציות שיווק", "מנהל פרויקט אוטומציות": "מנהל פרויקט אוטומציות",
          "מיישם פתרונות ai": "מיישם פתרונות AI", "ai implementation": "AI Implementation", "ai solutions": "AI Solutions", "ai product owner": "AI Product Owner",
          "technical product manager": "Technical Product Manager", "data product manager": "Data Product Manager", "product operations": "Product Operations",
          "crm product": "CRM / Salesforce Product", "lifecycle marketing": "Lifecycle / Retention", "טרנספורמציה דיגיטלית": "טרנספורמציה דיגיטלית",
-         "מנהל חדשנות": "מנהל חדשנות", "מנהל מערכות שיווק": "מנהל מערכות שיווק"}
+         "מנהל חדשנות": "מנהל חדשנות", "מנהל מערכות שיווק": "מנהל מערכות שיווק",
+         "gtm automation": "GTM Automation", "hubspot": "HubSpot", "campaign manager": "Campaign Manager", "media buyer": "Media Buyer"}
 WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע"}
 MIN_FIT = 40  # Assaf 19 Nov: threshold lowered 45 -> 40; a score under it goes straight to the archive ("auto") and is never shown
 HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
@@ -740,8 +743,9 @@ GROUPS = {
     "מוצר": ["מנהל מוצר", "product ai", "ai product owner", "technical product manager", "data product manager", "product operations", "product marketing"],
     "אוטומציה ושיווק": ["מנהל מוצר אוטומציות", "marketing automation", "אוטומציות שיווק", "מנהל פרויקט אוטומציות", "automation", "lifecycle marketing", "מנהל מערכות שיווק"],
     "AI": ["ai builder", "ai automation", "מיישם פתרונות ai", "ai implementation", "ai solutions"],
-    "CRM": ["crm product", "crm integration", "crm automation"],
-    "GTM ועוד": ["gtm product", "gtm ai", "gtm engineer", "טרנספורמציה דיגיטלית", "מנהל חדשנות"],
+    "CRM": ["crm product", "crm integration", "crm automation", "hubspot"],
+    "פרסום וקמפיינים": ["campaign manager", "media buyer"],
+    "GTM ועוד": ["gtm product", "gtm ai", "gtm engineer", "gtm automation", "טרנספורמציה דיגיטלית", "מנהל חדשנות"],
 }
 # Assaf 19 Nov (research report): run these, twice a day if possible - the keywords that lead to applications,
 # plus small keywords with a high send rate. Noisy ones (AI Automation, AI Solutions, GTM AI) stay out.
