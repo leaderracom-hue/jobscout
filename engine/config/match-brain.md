@@ -27,8 +27,8 @@ You read ONE job post (title, company, location, arrangement, full description) 
 
 ## What he wants
 
-- Roles: AI product manager / owner, product manager (especially AI, automation, fintech, ad-tech, SaaS, GTM tools), automation manager or specialist, AI implementation / solutions / project / program manager, technical / digital / IT project manager, product operations, RevOps / CRM automation, AI builder / agentic AI builder / n8n / Claude / GPT / vibe coding / no-code roles, chatbot developer or specialist, and chat or customer support (non-manager).
-- Not wanted: Lead or Head titles, engineering titles (except chatbot developer and the builder keywords), scientist, architect, designer, intern, sales / account executive, recruiter, and physical-site roles (construction, civil, mechanical, electrical, facilities, real estate, clinical, energy, solar, manufacturing, field).
+- Roles: AI product manager / owner, product manager (especially AI, automation, fintech, ad-tech, SaaS, GTM tools), automation manager or specialist, AI implementation / solutions / project / program manager, technical / digital / IT project manager, product operations, RevOps / CRM automation, AI builder / agentic AI builder / n8n / Claude / GPT / vibe coding / no-code roles, chatbot developer or specialist, chat or customer support (non-manager), and (new 24 Nov 2026, his stated goal) SALES OF AI SOLUTIONS TO BUSINESSES: AI sales / AI solutions sales, B2B sales or account executive for an AI, automation, agent, CRM or SaaS product, business development for AI solutions, solutions consultant / sales engineer / pre-sales for AI.
+- Not wanted: Lead or Head titles, engineering titles (except chatbot developer and the builder keywords), scientist, architect, designer, intern, generic sales / account executive roles that are NOT about AI, automation or SaaS solutions (retail, insurance, real estate, telemarketing, quota-only cold calling), recruiter, and physical-site roles (construction, civil, mechanical, electrical, facilities, real estate, clinical, energy, solar, manufacturing, field).
 
 ## Geography (two search types)
 
@@ -42,7 +42,7 @@ Score the CONTENT of the post against the facts above. Freshness and whether a p
 
 | Dimension | Points | What earns them |
 |---|---|---|
-| Role and responsibilities | 0–35 | The day-to-day described is work he has actually done: product ownership, discovery, roadmap, delivery with engineering, KPIs and A/B tests, building and shipping AI agents and automation, CRM and lead operations. |
+| Role and responsibilities | 0–35 | The day-to-day described is work he has actually done (for AI-solution sales roles: selling or scoping AI/automation/CRM solutions to businesses, discovery calls, demos, proposals, pilots, working with clients on workflows, which he has done through Leaderra and implementation work; closing quotas is not a proven record, so a post that requires a proven quota or years of closing experience is a gap): product ownership, discovery, roadmap, delivery with engineering, KPIs and A/B tests, building and shipping AI agents and automation, CRM and lead operations. |
 | Required skills and tools | 0–25 | Overlap between the post's must-haves and his tools and methods. Count real overlap only; "AI" in a title with none of his stack in the body earns little. |
 | Requirement gaps | 0–20 | Start at 20 and subtract for each must-have he lacks: engineering degree or coding in a named language (−8), years of AI/ML-specific experience beyond what 03/2025 allows (−6), domain he has never worked in stated as required (−5), people management of a large org (−5), certifications he lacks stated as required (−3). Nice-to-haves cost nothing. |
 | Domain | 0–10 | Fintech, trading, crypto, ad-tech, SaaS, GTM / sales / lead automation, conversational or voice AI = 8–10. Neutral B2B = 5. Unknown or far domain = 0–3. |
