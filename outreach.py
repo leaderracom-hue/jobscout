@@ -66,15 +66,20 @@ def _sp_name(c):
     return c.get("fullName") or " ".join(filter(None, [c.get("firstName") or c.get("first_name"), c.get("lastName") or c.get("last_name")])) or c.get("name") or c.get("full_name") or ""
 
 
-def sp_unlock(key, filter_id, name):
-    """PAID: 1 credit per email. Fetches the contacts of the search and keeps only the one named `name`."""
-    r = requests.post(f"{SP}/fetch-contacts", params={"api_key": key}, json={"filter_id": filter_id, "limit": 25, "visual_limit": 25}, timeout=60)
+def sp_unlock(key, company, domain, name, title):
+    """PAID, at most 1 credit. fetch-contacts unlocks the first `limit` contacts of a search, not a chosen person, so the old
+    limit=25 call could unlock (and bill) every recruiter the search found. Now: narrow the free search to this person's exact title,
+    and unlock only when exactly ONE contact is left, with limit=1. Otherwise return None and the waterfall moves on (Apollo, Apify)."""
+    res = sp_search(key, company, domain, title_words=[title] if title else None)
+    match = [p for p in res["people"] if (p["name"] or "").strip().lower() == (name or "").strip().lower()]
+    if res.get("total") != 1 or len(match) != 1 or not res.get("filter_id"):
+        return None
+    r = requests.post(f"{SP}/fetch-contacts", params={"api_key": key}, json={"filter_id": res["filter_id"], "limit": 1, "visual_limit": 1}, timeout=60)
     r.raise_for_status()
     d = r.json()
     dd = d.get("data") if isinstance(d.get("data"), dict) else d
     for c in _sp_list(dd):
-        nm = _sp_name(c)
-        if nm.strip().lower() == (name or "").strip().lower() and c.get("email") and "random" not in c["email"]:
+        if _sp_name(c).strip().lower() == (name or "").strip().lower() and c.get("email") and "random" not in c["email"]:
             return c["email"]
     return None
 

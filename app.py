@@ -3033,11 +3033,11 @@ def _page_outreach():
 
 
 def _sp_find(OUT, key, j, name, domain, O):
-    res = OUT.sp_search(key, j.get("company") or "", domain)
-    fid = res.get("filter_id")
-    if not fid or not any(p["name"].strip().lower() == name.strip().lower() for p in res["people"]):
+    """The person's title comes from the earlier free recruiter search on this page (O["people"]); without it SmartProspect is skipped."""
+    title = next((p.get("title") for p in (O.get("people") or []) if (p.get("name") or "").strip().lower() == name.strip().lower()), None)
+    if not title:
         return None
-    return OUT.sp_unlock(key, fid, name)
+    return OUT.sp_unlock(key, j.get("company") or "", domain, name, title)
 
 
 STAGES = {"applied": "הוגש", "replied": "נענה", "interview": "ראיון", "offer": "הצעה", "rejected": "נדחה", "dropped": "ירד מהפרק"}
