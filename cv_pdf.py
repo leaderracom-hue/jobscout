@@ -1,4 +1,4 @@
-"""Tailored CV -> PDF in Assaf's CV design (Assaf-GTM-AI-Dev-v2): pale green left column with the name, titles, contact, skills and
+"""Tailored CV -> PDF in the reference CV design (Assaf-GTM-AI-Dev-v2): pale green left column with the name, titles, contact, skills and
 languages, a green rule, and a main column with Summary, Experience and the other sections. Open Sans stands in for Segoe UI
 (not redistributable); Hebrew text uses DejaVu Sans, right-aligned. Input is the markdown of the tailored CV (tailored_md format)."""
 import re
@@ -9,9 +9,6 @@ from fpdf import FPDF
 FONTS = Path(__file__).parent / "fonts"
 GREEN, PALE, INK, TEXT, MUTE = (14, 90, 85), (238, 243, 241), (31, 35, 34), (61, 70, 68), (107, 116, 114)
 SIDE_W, RULE_W, MAIN_X, MAIN_R = 196.0, 3.0, 219.0, 24.5
-CONTACT = ["assafb2022@gmail.com", "linkedin.com/in/ablitz", "WhatsApp +972-58-426-6855", "Tel Aviv, Israel", "Israeli & EU Citizenship"]
-LANGS = ["Hebrew — Native", "English — Fluent"]
-PORTFOLIO = "https://ablitz-portfolio.streamlit.app"
 HEB = re.compile(r"[֐-׿]")
 
 
@@ -46,7 +43,10 @@ class _Doc(FPDF):
         self.rect(SIDE_W, 0, RULE_W, self.h, "F")
 
 
-def cv_pdf(md):
+def cv_pdf(md, prof=None):
+    """prof = the user's profile (contact lines, languages, portfolio URL); nothing personal is written in this file."""
+    from core import profile as PF
+    contact, langs, portfolio = PF.cv_contact(prof), PF.cv_languages(prof), (prof or {}).get("portfolio")
     d = parse_md(md)
     rtl = bool(HEB.search(md))
     pdf = _Doc(unit="pt", format="Letter")
@@ -83,15 +83,16 @@ def cv_pdf(md):
         side(t, 9.4 if i == 0 else 8.6, INK if i == 0 else TEXT, sb if i == 0 else "", 1)
     y += 6
     side("CONTACT", 8.6, GREEN, bd, 2)
-    for c in CONTACT:
+    for c in contact:
         side(c, 8.0, TEXT, "", 0.5)
-    pdf.set_fill_color(*GREEN)
-    pdf.rect(sx, y + 4, 92, 15, "F", round_corners=True, corner_radius=3)
-    pdf.set_font("F", sb, 7.4)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_xy(sx, y + 7.2)
-    pdf.cell(92, 9, "VIEW PORTFOLIO", align="C", link=PORTFOLIO)
-    y += 26
+    if portfolio:
+        pdf.set_fill_color(*GREEN)
+        pdf.rect(sx, y + 4, 92, 15, "F", round_corners=True, corner_radius=3)
+        pdf.set_font("F", sb, 7.4)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_xy(sx, y + 7.2)
+        pdf.cell(92, 9, "VIEW PORTFOLIO", align="C", link=portfolio)
+        y += 26
     skills = next((s for s in d["sections"] if re.search(r"skill|כישור", s["title"], re.I)), None)
     if skills:
         side("SKILLS", 8.6, GREEN, bd, 2)
@@ -99,8 +100,9 @@ def cv_pdf(md):
         for it in items[:40]:
             side(it, 8.0, TEXT, "", 0.5)
         y += 4
-    side("LANGUAGES", 8.6, GREEN, bd, 2)
-    for ln in LANGS:
+    if langs:
+        side("LANGUAGES", 8.6, GREEN, bd, 2)
+    for ln in langs:
         side(ln, 8.0, TEXT, "", 0.5)
     # ---- main column ----
     pdf.set_xy(MAIN_X, 34)

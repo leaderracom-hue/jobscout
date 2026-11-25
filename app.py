@@ -158,6 +158,27 @@ def load_state():
     return json.loads(raw), meta["sha"]
 
 
+def profile():
+    """Phase 1 (25 Nov): the job seeker's facts (profile.json in the data repo + settings.profile in state.json) - every prompt, the CV PDF and the
+    screens read the candidate from here instead of from the code. Cached 10 minutes, safe in background threads."""
+    c = SH.get("profile_cache")
+    if c and time.time() - c[0] < 600:
+        return c[1]
+    p = {}
+    try:
+        r = requests.get(gh_url("profile.json"), headers=gh_headers(True), timeout=20)
+        if r.ok:
+            p.update(r.json())
+    except Exception:
+        pass
+    try:  # fields edited in the app (settings.profile in state.json) win over profile.json
+        p.update((load_state()[0].get("settings") or {}).get("profile") or {})
+    except Exception:
+        pass
+    SH["profile_cache"] = (time.time(), p)
+    return p
+
+
 def ats_extra_load():
     """Careers boards the engine discovered on its own, kept in the private repo (ats-extra.json)."""
     r = requests.get(gh_url("ats-extra.json"), headers=gh_headers(), timeout=20)
@@ -222,138 +243,13 @@ def cv_bytes(lang, name):
 DICT = json.loads((APP / "engine/mini-agent/dictionary.json").read_text(encoding="utf-8"))
 
 
-def _list_rx(words):
-    parts = [rf"(?<![a-z0-9]){re.escape(w.lower())}(?![a-z0-9])" if all(ord(c) < 128 for c in w) else re.escape(w) for w in words if w]
-    return re.compile("|".join(parts), re.I) if parts else None
+
+from core import profile as PF  # noqa: E402
+from core.rules import (  # noqa: E402  moved out of app.py 25 Nov (phase 1)
+    LOC_ALL_EU, LOC_IL, LOC_REMOTE, ARR_HE, CYBER_CO, CYBER_TI, DICT, ELIG_HE, EMP_HE, EN_WORDS, EU_COUNTRIES, EU_RX, GTM_RX, IL_PLACES, ISRAELI_BOARDS, MED_CO, MED_TI, OTHER_WORDS, _list_rx, _word_hit, apply_prefs, company_key, excluded, final_score, intl_reason, is_cyber, is_english_post, is_gtm, is_international, is_medical, job_countries, key_of, lang_of, loc_match, norm, settings_of)
 
 
-CYBER_CO = _list_rx((DICT.get("_exclude") or {}).get("companies", []))
-CYBER_TI = _list_rx((DICT.get("_exclude") or {}).get("titles", []))
-
-
-MED_CO = _list_rx((DICT.get("_exclude_medical") or {}).get("companies", []))
-MED_TI = _list_rx((DICT.get("_exclude_medical") or {}).get("titles", []))
-
-
-def is_medical(j):
-    """Assaf 24 Nov: no medical / healthcare-clinical jobs (title words and company names; the engine also checks the LinkedIn industry)."""
-    return bool((MED_CO and MED_CO.search(str(j.get("company") or "").lower())) or (MED_TI and MED_TI.search(str(j.get("title") or "").lower())))
-
-
-def is_cyber(j):
-    """Safety net in the app (Assaf 19 Nov): the engine's cyber lists, checked again here. Cyber beats every other rule, GTM included."""
-    return bool((CYBER_CO and CYBER_CO.search(str(j.get("company") or "").lower())) or (CYBER_TI and CYBER_TI.search(str(j.get("title") or "").lower())))
 BRAIN = (APP / "engine/config/match-brain.md").read_text(encoding="utf-8")
-
-
-def norm(s):
-    return re.sub(r"[^a-z֐-׿0-9]", "", str(s or "").lower())
-
-
-def key_of(j):
-    return norm(j.get("company"))[:10] + "|" + norm(j.get("title"))[:24]
-
-
-def settings_of(s):
-    """Assaf 19 Nov: user rules kept in state.json → exclude words (title), blocked + followed companies."""
-    st_ = s.setdefault("settings", {})
-    for k in ("exclude_words", "keep_words", "blocked_companies", "followed_companies"):
-        st_.setdefault(k, [])
-    return st_
-
-
-def company_key(name):
-    n = norm(name)
-    return "" if not n or "חסוי" in str(name or "") or n in ("confidential",) else n[:24]
-
-
-def _word_hit(word, text):
-    w = str(word or "").strip()
-    if not w:
-        return False
-    if re.fullmatch(r"[\x00-\x7f]+", w):  # Latin: whole word only ("staff" must not hit "staffing")
-        return re.search(r"(?<![a-z0-9])" + re.escape(w.lower()) + r"(?![a-z0-9])", str(text or "").lower()) is not None
-    return w in str(text or "")
-
-
-GTM_RX = re.compile(r"\bgtm\b", re.I)
-
-
-def is_gtm(j):
-    """Assaf 19 Nov: a job with GTM in the title or the post text skips the title filters and the exclude words.
-    The score rule still wins: under MIN_FIT (40) is never shown (Assaf, later the same day)."""
-    return bool(j.get("gtm") or GTM_RX.search(str(j.get("title") or "")) or GTM_RX.search(str(j.get("desc") or "")))
-
-
-def excluded(s, j):
-    """Why a job is filtered out by the user's own rules, or None."""
-    cfg = settings_of(s)
-    if is_cyber(j):
-        return "סייבר"
-    if is_medical(j):
-        return "רפואה"
-    ck = company_key(j.get("company"))
-    if ck and ck in cfg["blocked_companies"]:
-        return f"חברה חסומה: {j.get('company')}"
-    if is_gtm(j) or any(_word_hit(w, j.get("title")) for w in cfg["keep_words"]):  # GTM jobs + "never hide" words win over exclude words
-        return None
-    for w in cfg["exclude_words"]:
-        if _word_hit(w, j.get("title")):
-            return f"מילה לסינון: {w}"
-    return None
-
-
-IL_PLACES = re.compile("israel|ישראל|tel aviv|tel-aviv|tel aviv-yafo|תל אביב|herzliya|הרצליה|ramat gan|רמת גן|petah tikva|petach tikva|פתח תקווה|"
-                       "haifa|חיפה|jerusalem|ירושלים|raanana|ra'anana|רעננה|netanya|נתניה|rehovot|רחובות|holon|חולון|beer sheva|be'er sheva|באר שבע|"
-                       "yokneam|יקנעם|kfar saba|כפר סבא|hod hasharon|bnei brak|givatayim|rishon|caesarea|airport city|modiin|modi'in|ness ziona|or yehuda", re.I)
-ISRAELI_BOARDS = {"alljobs", "jobmaster", "drushim", "drushimapify"}
-EN_WORDS = {"the", "and", "with", "for", "you", "our", "will", "your", "are", "experience", "team", "work", "we", "of", "to", "in", "is"}
-OTHER_WORDS = {"und", "der", "die", "das", "mit", "für", "wir", "sie", "et", "les", "des", "une", "pour", "nous", "vous", "avec", "el", "los",
-               "las", "para", "con", "una", "che", "per", "il", "di", "een", "het", "van", "voor", "zijn", "jest", "oraz", "dla", "się", "och", "att", "är"}
-
-
-def is_international(j, sc=None):
-    """Assaf 21 Nov: a job is international when it is not in Israel (Israeli boards and Israeli places count as Israel)."""
-    if set(j.get("boards") or []) & ISRAELI_BOARDS:
-        return False
-    # order matters: the job's own location beats the company's home country (Papaya is Israeli, its Barcelona job is not)
-    if j.get("region") in ("IL", "EEA"):  # engine tag from the careers scan
-        return j["region"] == "EEA"
-    loc = str(j.get("location") or "")
-    if loc.strip():
-        return not IL_PLACES.search(loc)
-    return ((sc or {}).get("region") or j.get("region")) in ("EEA", "Other", "Global")
-
-
-def is_english_post(j):
-    """Cheap check before paying to score: the post is written in English (not Hebrew, German, French, Polish...)."""
-    words = re.findall(r"[a-zà-ÿąćęłńóśźż]+", f"{j.get('title', '')} {str(j.get('desc') or '')[:3000]}".lower())
-    if not words:
-        return True  # no text to judge -> let the review decide
-    en, other = sum(w in EN_WORDS for w in words), sum(w in OTHER_WORDS for w in words)
-    he = len(re.findall("[֐-׿]", str(j.get("desc") or "")[:3000]))
-    return en >= other * 1.5 and he < 30
-
-
-def intl_reason(j, sc, open_eu=False):
-    """Assaf 21 Nov rule for jobs outside Israel: written in English, fully remote, no language required besides English and Hebrew.
-    Returns why the job is out, or None when it may be shown (Israeli jobs always return None)."""
-    if not is_international(j, sc):
-        return None
-    if not is_english_post(j):
-        return "משרה בחו״ל שלא כתובה באנגלית"
-    if not open_eu and (sc or {}).get("arr", j.get("arr")) != "Remote":  # Assaf's rule: outside Israel ONLY jobs proven fully remote (22 Nov: an "Unknown" fix was tried and reverted)
-        return "משרה בחו״ל שאינה מרחוק מלא"
-    extra = [x for x in ((sc or {}).get("langs_req", j.get("langs_req")) or []) if str(x).strip().lower() not in ("english", "hebrew", "אנגלית", "עברית")]
-    if extra:
-        return "משרה בחו״ל שדורשת שפה נוספת: " + ", ".join(extra)
-    return None
-
-
-def lang_of(j):
-    s = f"{j.get('title', '')} {str(j.get('desc', ''))[:800]}"
-    he, lat = len(re.findall(r"[֐-׿]", s)), len(re.findall(r"[A-Za-z]", s))
-    return "he" if he > lat * 0.5 else "en"
 
 
 def cv_pool(kw, lang):
@@ -392,9 +288,6 @@ def brain_block(lang, files):
 EMP_TYPES = ["Full-Time", "Part-Time", "Contract", "Freelance"]
 ARRANGEMENTS = ["Remote", "Hybrid", "On-site"]
 REGION_OPTS = {"IL": "ישראל", "EEA": "EEA / אירופה"}
-EMP_HE = {"Full-Time": "משרה מלאה", "Part-Time": "חלקית", "Contract": "חוזה / פרויקט", "Freelance": "פרילנס", "Unknown": "לא ידוע"}
-ARR_HE = {"Remote": "מרחוק", "Hybrid": "היברידי", "On-site": "מהמשרד", "Unknown": "לא ידוע"}
-ELIG_HE = {"eligible": "זכאי", "needs_verification": "דורש אימות", "not_eligible": "לא מתאים לתנאים"}
 MODEL = "claude-haiku-5-5"  # Assaf 21 Nov: the cheapest model for EVERYTHING in the app (saves tokens)
 SCORE_MODEL = TIE_MODEL = MODEL
 B_BAND = (25, 100)  # 25 Nov: second review skipped only for clear rejects; a single review ran ~10 points high on good jobs  # 2 independent reviews; a third decides gaps > 10
@@ -438,7 +331,7 @@ TIE_SCHEMA = {
 }
 RUBRIC = """
 ## Scoring method (documented, the same for every review)
-Candidate eligibility facts: lives in Tel Aviv, Israel. Israeli citizen AND Polish (EU) citizen: may work in Israel and anywhere in the EU/EEA without sponsorship. For a remote job run from abroad, check whether the employer hires people based in Israel (or via contractor/EOR); "Remote Europe" alone does not prove that someone living in Israel can be hired.
+{ELIGIBILITY}
 
 1. requirements: list every requirement the POST states (max 12). kind = must (stated as required / must / X+ years) or nice (advantage / plus / preferred). status: met = the profile proves it; partial = related but weaker; missing = the post requires it and the profile proves he does not have it; unknown = the profile does not say. Evidence = a short quote from the post or the profile. A requirement the post does not state is NOT missing.
 2. professional_match 0-100 (skills, role, systems, experience only; ignore location and contract terms): start from role fit (same function and seniority = 70, adjacent = 50, different function = 20), then +up to 25 for met must-haves and nice-to-haves, -10 for each missing must-have (not for unknown), -5 per partial must-have. Cyber / information-security employer or role = 0.
@@ -450,6 +343,10 @@ Candidate eligibility facts: lives in Tel Aviv, Israel. Israeli citizen AND Poli
 7. why_he: ONE short sentence in simple, natural Hebrew (max 18 words), male second person ("יש לך…"): the main reason it fits, then the main gap after "פער:". Tool names in English. Never state how many years or months he has. Hebrew letters, English and digits only.
 8. gaps: up to 4 short Hebrew items. cv_file: copy exactly one file name from the CV CATALOG. Pick it by the rules in the catalog: the job's function decides the family, then the CV whose target roles and keywords overlap most with the post's title and stated requirements; never a CV whose weak_for matches this post.
 """
+
+
+def rubric():
+    return RUBRIC.replace("{ELIGIBILITY}", PF.eligibility_facts(profile()))
 
 
 def track(r):
@@ -523,40 +420,11 @@ def _post_text(j, pool):
         "", f"CV FILES TO CHOOSE FROM: {json.dumps(pool, ensure_ascii=False)}"])
 
 
-def apply_prefs(ev, prefs):
-    """Deterministic: the user's employment / arrangement / region choices decide eligibility on top of the model's reading."""
-    prefs = prefs or {}
-    notes, status = [], ev["eligibility_status"]
-    emp, arr, reg = ev["employment_type"]["value"], ev["work_arrangement"]["value"], ev["location"]["job_region"]
-    for val, want, he, label in [(emp, prefs.get("employment") or [], EMP_HE, "סוג העסקה"), (arr, prefs.get("arrangement") or [], ARR_HE, "אופי עבודה")]:
-        if want and val != "Unknown" and val not in want:
-            status = "not_eligible"
-            notes.append(f"{label} {he.get(val, val)} לא בהעדפות שלך")
-        elif want and val == "Unknown" and status == "eligible":
-            status = "needs_verification"
-            notes.append(f"{label} לא צוין, נדרשת בדיקה")
-    regions = prefs.get("regions") or ["IL"]
-    reg_map = {"Israel": "IL", "EEA": "EEA"}
-    if reg in reg_map and reg_map[reg] not in regions and "remote" not in str(ev["location"]["allowed_work_from"]).lower():
-        status = "not_eligible"
-        notes.append(f"המשרה ב-{reg}, מחוץ לאזורים שבחרת")
-    elif reg in ("Unknown", "Other", "Global") and status == "eligible":
-        status = "needs_verification"
-        notes.append("לא ברור מאיפה מותר לעבוד")
-    return status, notes
-
-
-def final_score(prof, status):
-    """Final Match Score: the professional match, capped when the terms do not fit (a strong CV match never hides a hard conflict)."""
-    prof = max(0, min(100, int(prof)))
-    return min(prof, 25) if status == "not_eligible" else prof
-
-
 def score_job(j, kw, prefs=None):
     """Assaf 21 Nov: two independent reviews with the same documented rubric + a tie-break when they differ by more than 10."""
     lang = lang_of(j)
     pool = cv_pool(kw, lang)
-    system = [{"type": "text", "text": BRAIN + "\n" + RUBRIC + "\n\n" + brain_block(lang, pool), "cache_control": {"type": "ephemeral"}}]
+    system = [{"type": "text", "text": BRAIN + "\n" + rubric() + "\n\n" + brain_block(lang, pool), "cache_control": {"type": "ephemeral"}}]
     post = _post_text(j, pool)
     a_user = post + "\n\nReview this post against the candidate with the scoring method. Return the JSON."
     b_user = ("Independent second review. Do not assume any earlier score. Re-read the post from the top: first list every requirement "
@@ -1046,7 +914,7 @@ def ask_claude(j, question, prior):
                       f"POSTED: {ago(j)}", f"LINK: {j.get('url')}", f"FIT SCORE: {j.get('fit')}", f"WHY IT FITS (earlier review): {j.get('why') or ''}",
                       f"GAPS: {', '.join(map(str, j.get('gaps') or []))}", "", "JOB DESCRIPTION:",
                       j.get("desc") or "(not saved for this job - answer from the title, company and the review above, and say the full post was not available)"])
-    system = (BRAIN + "\n\n---\nYou now answer Assaf's questions about ONE job post (below). Answer in simple, natural Hebrew, "
+    system = (BRAIN + "\n\n---\nYou now answer " + PF.first_name(profile()) + "'s questions about ONE job post (below). Answer in simple, natural Hebrew, "
               "speaking to him in male second person; keep tool and product names in English. Be concrete and short (max ~150 words) unless he "
               "asks for a letter or a list. Never invent facts about the company or the post; say when something is not in the post. "
               "Never state how many years of experience he has.\n\nJOB POST:\n" + post)
@@ -1094,42 +962,6 @@ def ask_panel(j):
 
 
 CTX = {"sent_by_co": {}, "followed": set()}
-
-
-EU_COUNTRIES = {  # EU-27, with the spellings job posts use
-    "Austria": ["austria", "österreich", "vienna"], "Belgium": ["belgium", "belgië", "brussels"], "Bulgaria": ["bulgaria", "sofia"],
-    "Croatia": ["croatia", "zagreb"], "Cyprus": ["cyprus", "nicosia", "limassol"], "Czechia": ["czech", "prague", "praha"],
-    "Denmark": ["denmark", "copenhagen"], "Estonia": ["estonia", "tallinn"], "Finland": ["finland", "helsinki"],
-    "France": ["france", "paris"], "Germany": ["germany", "deutschland", "berlin", "munich", "münchen", "hamburg"],
-    "Greece": ["greece", "athens"], "Hungary": ["hungary", "budapest"], "Ireland": ["ireland", "dublin"],
-    "Italy": ["italy", "italia", "milan", "rome"], "Latvia": ["latvia", "riga"], "Lithuania": ["lithuania", "vilnius"],
-    "Luxembourg": ["luxembourg"], "Malta": ["malta"], "Netherlands": ["netherlands", "holland", "amsterdam", "rotterdam"],
-    "Poland": ["poland", "polska", "warsaw", "krakow", "wroclaw"], "Portugal": ["portugal", "lisbon", "porto"],
-    "Romania": ["romania", "bucharest"], "Slovakia": ["slovakia", "bratislava"], "Slovenia": ["slovenia", "ljubljana"],
-    "Spain": ["spain", "españa", "madrid", "barcelona"], "Sweden": ["sweden", "stockholm"]}
-EU_RX = {c: re.compile(r"(?<![a-z])(?:" + "|".join(re.escape(x) for x in v) + r")(?![a-z])", re.I) for c, v in EU_COUNTRIES.items()}
-LOC_ALL_EU, LOC_IL, LOC_REMOTE = "🇪🇺 כל האיחוד האירופי", "ישראל", "ללא מדינה / מרחוק בעולם"
-
-
-def job_countries(j):
-    """Countries named in the job's location text (EU-27 + Israel). Empty list = no country stated."""
-    loc = str(j.get("location") or "")
-    out = [c for c, rx in EU_RX.items() if rx.search(loc)]
-    if re.search(r"israel|tel aviv|jerusalem|haifa|[֐-׿]", loc, re.I) or (not out and set(j.get("boards") or []) & {"alljobs", "jobmaster", "drushim"}):
-        out.append(LOC_IL)
-    return out
-
-
-def loc_match(j, picks):
-    cs = job_countries(j)
-    for p in picks:
-        if p == LOC_ALL_EU and any(c in EU_COUNTRIES for c in cs):
-            return True
-        if p == LOC_REMOTE and not cs:
-            return True
-        if p in cs:
-            return True
-    return False
 
 
 def fit_cls(fit):
@@ -1231,7 +1063,7 @@ def card(j, new=False):
         ask_panel(j)
 
 
-GEN_RULES = ("Rules: write as Assaf (AI and marketing-automation product manager; n8n, workflow automation, Salesforce, Dynamics 365), human and plain, "
+GEN_RULES = ("Rules: write as {PERSONA}, human and plain, "
              "no invented numbers or claims, never mention what he lacks or has not done, no flattery, no links, do not mention a CV or attachment. "
              "Use only what the job text supports.")
 
@@ -1247,7 +1079,7 @@ def _gen_text(j, kind):
         ask = ("Write a short personal note (max 280 characters) in " + ("Hebrew" if he else "English") + " to send to the person who posted this role "
                "(LinkedIn connection note or a first message). Say he saw the role and one concrete reason it fits. ")
     r = client.messages.create(model=MODEL, max_tokens=8000, messages=[{"role": "user", "content": (
-        f"Role: {j.get('title')} at {j.get('company')} ({j.get('location')})\nJob text: {(j.get('desc') or j.get('why') or '')[:2200]}\n\n" + ask + GEN_RULES +
+        f"Role: {j.get('title')} at {j.get('company')} ({j.get('location')})\nJob text: {(j.get('desc') or j.get('why') or '')[:2200]}\n\n" + ask + GEN_RULES.replace("{PERSONA}", PF.persona(profile())) +
         " Return only the text.")}])
     track(r)
     t = "".join(b.text for b in r.content if b.type == "text").strip()
@@ -1291,7 +1123,7 @@ def _save_resume(fn, md, lang):
         from cv_pdf import cv_pdf
         url = gh_url(f"resume/{lang}/{fn}")
         old = requests.get(url, headers=gh_headers(), timeout=20)
-        body = {"message": "tailored cv " + fn, "content": base64.b64encode(cv_pdf(md)).decode()}
+        body = {"message": "tailored cv " + fn, "content": base64.b64encode(cv_pdf(md, profile())).decode()}
         if old.status_code == 200:
             body["sha"] = old.json()["sha"]
         requests.put(url, headers=gh_headers(), json=body, timeout=40)
@@ -1590,7 +1422,7 @@ def prefs_panel(s):
         if regions == ["EEA"] and set(src) & IL_SOURCES:
             notes.append("AllJobs, JobMaster ודרושים הם לוחות ישראליים, ולא ירוצו כשנבחר רק EEA.")
         if "EEA" in regions:
-            notes.append("ב-EEA: LinkedIn (האיחוד האירופי) ודפי הקריירה של 206 החברות עם משרות באירופה. אתה אזרח פולני, ולכן זכאי לעבוד באיחוד; בכל משרה נבדק אם המעסיק מאפשר עבודה מישראל.")
+            notes.append("ב-EEA: LinkedIn (האיחוד האירופי) ודפי הקריירה של 206 החברות עם משרות באירופה. " + ("לפי הפרופיל שלך מותר לך לעבוד באיחוד; " if PF.eu_citizen(profile()) else "") + "בכל משרה נבדק אם המעסיק מאפשר עבודה מהמקום שבו אתה גר.")
         if emp or arr:
             notes.append("הסינון לפי סוג העסקה ואופי עבודה נעשה על ידי Claude שקורא כל משרה (LinkedIn החזיר 0 תוצאות כשהסינון נשלח אליו). מה שלא כתוב במשרה מסומן \"דורש אימות\".")
         for n in notes:
@@ -1648,7 +1480,7 @@ def page_search():
         if f"kwg_{i}" not in st.session_state:
             st.session_state[f"kwg_{i}"] = []
         picked += st.pills(g, items, format_func=lbl, selection_mode="multi", key=f"kwg_{i}") or []
-    st.session_state.setdefault("kw_free", "automation product manager")  # Assaf 22 Nov: default extra keyword
+    st.session_state.setdefault("kw_free", PF.default_keywords(profile()))  # default extra keywords come from the profile
     free = st.text_input("מילים נוספות (מופרדות בפסיק)", key="kw_free", placeholder="למשל: revops, מנהל CRM")
     kws = list(dict.fromkeys(picked + [w.strip().lower() for w in free.split(",") if w.strip()]))
 
@@ -1680,7 +1512,7 @@ def ask_search(rows, label, question, prior):
     import anthropic
     client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"))
     lines = ["title|company|fit|status|why"] + [f"{j.get('title')}|{j.get('company')}|{j.get('fit')}|{j['_st']}|{(j.get('why') or '')[:110]}" for j in rows[:400]]
-    system = (BRAIN + "\n\n---\nYou answer Assaf's questions about ONE search he ran in Job Scout: " + label + ". Below are the jobs it returned. Answer in simple, "
+    system = (BRAIN + "\n\n---\nYou answer " + PF.first_name(profile()) + "'s questions about ONE search they ran in Job Scout: " + label + ". Below are the jobs it returned. Answer in simple, "
               "natural Hebrew, male second person, keep tool names in English, concrete and short. Use only this data, compute exactly, say when it cannot "
               "answer.\n\nRESULTS:\n" + "\n".join(lines))
     msgs = []
@@ -2072,7 +1904,7 @@ def ask_data(question, prior):
     s, _ = load_state()
     client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"))
     system = [{"type": "text", "text": (
-        "You are the analyst inside Job Scout, Assaf's job-search dashboard (Israel only; he applies manually; target 50-70 applications a day). "
+        "You are the analyst inside Job Scout, the user's job-search dashboard (Israel only; he applies manually; target 50-70 applications a day). "
         "Answer his questions from the data below only - count and compute exactly, show the numbers you used, and say when the data cannot answer. "
         "Answer in simple, natural Hebrew, male second person, short (max ~180 words), using a small markdown table when it helps. "
         "Keep keyword, tool, company and source names as written in the data.\n\nDATA:\n" + data_context(s)),
@@ -2234,7 +2066,7 @@ def run_research(s):
     client = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"))
     i = compute_insights(s)
     prompt = (
-        "Write a research report for Assaf about his job search, from the data. Fill the JSON fields:\n"
+        "Write a research report for the user about their job search, from the data. Fill the JSON fields:\n"
         "- headline: one sentence, the main conclusion.\n- kpis: 4-6 key numbers (value short, e.g. '50%', '36.5/day'; note = what it means; tone good/warn/info).\n"
         "- works: 3-5 things that work (keywords, sources, job types) with the number behind each in metric.\n"
         "- not_working: 3-5 things that don't work and why, each with its number.\n"
@@ -2245,7 +2077,7 @@ def run_research(s):
         f"Daily goal: {i['goal']} applications. Score threshold: {MIN_FIT}. Be specific, use the real numbers, no generic advice. "
         "All text in simple, natural Hebrew, male second person; keep keyword, company and source names as in the data.")
     system = [{"type": "text", "text": (
-        "You are the analyst inside Job Scout, Assaf's job-search dashboard (Israel only; he applies manually). Use only the data below; "
+        "You are the analyst inside Job Scout, the user's job-search dashboard (Israel only; he applies manually). Use only the data below; "
         "compute exactly and say when the data cannot answer. Jobs with GTM in the title or post skip his title filters by his rule.\n\nDATA:\n"
         + data_context(s)), "cache_control": {"type": "ephemeral"}}]
     with client.beta.messages.stream(model=MODEL, max_tokens=64000, system=system, messages=[{"role": "user", "content": prompt}],
@@ -2595,7 +2427,7 @@ def cv_scan(j, lang):
     r = client.messages.create(
         model=MODEL, max_tokens=14000, output_config={"format": {"type": "json_schema", "schema": SCAN_SCHEMA}},
         messages=[{"role": "user", "content": (
-            _job_block(j) + "\n\nBelow are ALL of Assaf's CVs. For each CV give match (0-100) = how well it already fits THIS job, and level = how much tailoring it needs: "
+            _job_block(j) + "\n\nBelow are ALL of the candidate's CVs. For each CV give match (0-100) = how well it already fits THIS job, and level = how much tailoring it needs: "
             "none (80+, submit as is), light (65-79, keyword and wording tweaks), moderate (45-64, reorder and rewrite parts), heavy (under 45, a major rewrite; "
             "usually another CV is a better base). reason = at most 12 Hebrew words. best = the cv_file name to start from. Rank all CVs, best first. "
             "Use only what is written in each CV.\n\n" + "\n\n".join(parts))}])
@@ -2639,7 +2471,7 @@ def tailor_history(s):
         d1, d2, d3, d4, d5 = st.columns(5)
         try:
             from cv_pdf import cv_pdf
-            d1.download_button("⬇ PDF", cv_pdf(e["text"]), file_name=f"{stem}.pdf", mime="application/pdf", key=f"tl_pdf_{e['id']}", width="stretch", type="primary")
+            d1.download_button("⬇ PDF", cv_pdf(e["text"], profile()), file_name=f"{stem}.pdf", mime="application/pdf", key=f"tl_pdf_{e['id']}", width="stretch", type="primary")
         except Exception as ex:
             d1.caption(f"PDF: {str(ex)[:60]}")
         d2.download_button("⬇ Word", docx_bytes(e["text"]), file_name=f"{stem}.docx", key=f"tl_doc_{e['id']}", width="stretch",
@@ -2777,7 +2609,7 @@ def page_tailor():
     if st.button("🔍 נתח את קורות החיים מול המשרה", type="primary", key="t_an"):
         with st.spinner("Claude מנתח… (כחצי דקה)"):
             try:
-                S["an"] = _tailor_call(_job_block(j) + "\n\nORIGINAL CV:\n" + orig + "\n\nAnalyse this CV against this job for Assaf (answer texts in Hebrew, "
+                S["an"] = _tailor_call(_job_block(j) + "\n\nORIGINAL CV:\n" + orig + "\n\nAnalyse this CV against this job for the candidate (answer texts in Hebrew, "
                                        "keywords as written in the post). ats_keywords: 10-25 terms from the post (systems, skills, role terms) and whether the CV "
                                        "has each. must_haves: the post's required items and how the CV covers them. gaps: missing keywords, systems not "
                                        "highlighted, unclear abilities, experience to bring forward, wording, format problems for ATS. skills_to_confirm: "
@@ -2857,7 +2689,7 @@ def page_tailor():
         try:  # Assaf 22 Nov: PDF in his CV design (Assaf-GTM-AI-Dev-v2) is the default download
             from cv_pdf import cv_pdf
             _he = bool(re.search(r"[֐-׿]", edited))
-            e0.download_button("⬇ PDF (העיצוב שלי)", cv_pdf(edited), file_name=f"{stem}.pdf", width="stretch", type="primary", mime="application/pdf",
+            e0.download_button("⬇ PDF (העיצוב שלי)", cv_pdf(edited, profile()), file_name=f"{stem}.pdf", width="stretch", type="primary", mime="application/pdf",
                                on_click=_save_resume, args=(f"{stem}.pdf", edited, "he" if _he else "en"))
             e0.caption("עותק נשמר גם בתיקיית Resume של " + ("עברית" if _he else "אנגלית") + " (דרך Sync-Cover-Letters.bat)")
         except Exception as e:
@@ -2904,12 +2736,12 @@ def _out_draft(j, contact):
         model=MODEL, max_tokens=8000,
         output_config={"format": {"type": "json_schema", "schema": schema}},
         messages=[{"role": "user", "content": (
-            "Write a short cold outreach from Assaf, a product manager for AI and marketing automation (n8n, workflow automation, Salesforce, Dynamics 365), "
+            f"Write a short cold outreach from {PF.persona(profile())}, "
             f"to {contact or 'the hiring contact'} at {j.get('company')} about the open role '{j.get('title')}'.\n"
             f"Job description (excerpt): {(j.get('desc') or '')[:1500]}\n\n"
-            "Rules: English, human and plain, 60-90 words, no links, no mention of a CV or attachment, never mention what Assaf lacks or has not done, "
+            "Rules: English, human and plain, 60-90 words, no links, no mention of a CV or attachment, never mention what the sender lacks or has not done, "
             "no invented numbers or claims, no flattery, no 'I hope this finds you well'. Say he saw the role, one concrete line on why he fits "
-            "from the description, and offer to share more if relevant. Sign 'Assaf'. connect_note: LinkedIn connection note, max 280 characters, same tone.")}])
+            "from the description, and offer to share more if relevant. Sign '" + PF.first_name(profile()) + "'. connect_note: LinkedIn connection note, max 280 characters, same tone.")}])
     track(r)
     d = json.loads("".join(b.text for b in r.content if b.type == "text"))
     d["connect_note"] = d["connect_note"][:290]
