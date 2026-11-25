@@ -132,3 +132,20 @@ def test_saved_search_applies_keywords(app):
     ss = app["st"].session_state
     assert any("marketing automation" in (ss.get(f"kwg_{i}") or []) for i in range(len(app["GROUPS"])))
     assert ss["kw_free"] == "my own words" and ss["win"] == 24
+
+
+def test_cv_outcomes_count_replies_per_cv(app):
+    s = app["box"]["s"]
+    s["archive"]["x1"] = {"status": "sent", "cv": "A.pdf", "stage": "interview"}
+    s["archive"]["x2"] = {"status": "sent", "cv": "A.pdf"}
+    s["archive"]["x3"] = {"status": "removed", "cv": "A.pdf"}
+    app["SH"].pop("cv_outcomes", None)
+    assert app["cv_outcomes"]()["A.pdf"] == {"sent": 2, "replies": 1}
+
+
+def test_inbox_shows_source_and_easy_apply_filters():
+    src = STATE_SRC.replace('"boards": ["alljobs"], "location": "Tel Aviv"},\n               "b"', '"boards": ["linkedin"], "easyApply": True, "location": "Tel Aviv"},\n               "b"')
+    at = _page_test(src + "inbox_body()\n")
+    assert not at.exception
+    labels = [t.label for t in at.toggle]
+    assert any("Easy Apply · 1" in x for x in labels), labels
