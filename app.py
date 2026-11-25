@@ -186,23 +186,39 @@ def ats_extra_add(found):
 
 
 def update_state(mutate, message):
-    """Read, apply the change, write back. One writer at a time on this server (lock); retry if GitHub saw another write."""
+    """Read, apply the change, write back. One writer at a time on this server (lock); retry if GitHub saw another write.
+    25 Nov: GitHub returned 500 on every write for ~15 minutes. Server errors are now retried with growing waits (about 45 s in
+    all), and if the save still fails the user sees a plain message instead of a crash (nothing was saved; try again)."""
+    last = None
     with SH["lock"]:
-        for _ in range(6):
+        for attempt in range(8):
             s, sha = load_state()
             mutate(s)
-            body = {"message": message, "content": base64.b64encode(json.dumps(s, ensure_ascii=False, indent=1).encode()).decode()}
+            body = {"message": message, "content": base64.b64encode(json.dumps(s, ensure_ascii=False, separators=(",", ":")).encode()).decode()}
             if sha:
                 body["sha"] = sha
-            r = requests.put(gh_url("state.json"), headers=gh_headers(), json=body, timeout=30)
-            if r.status_code in (200, 201):
+            try:
+                r = requests.put(gh_url("state.json"), headers=gh_headers(), json=body, timeout=60)
+            except requests.RequestException as e:
+                r, last = None, e
+            if r is not None and r.status_code in (200, 201):
                 SH["latest"] = (s, r.json()["content"]["sha"], time.time())
                 return s
             SH["latest"] = None
-            if r.status_code not in (409, 422):
-                r.raise_for_status()
-            time.sleep(1.0)
-    raise RuntimeError("could not save to the data repo")
+            if r is not None:
+                last = r.status_code
+                if r.status_code not in (409, 422) and r.status_code < 500:
+                    r.raise_for_status()
+            time.sleep(min(1.5 * (attempt + 1), 8))
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        on_screen = get_script_run_ctx() is not None
+    except Exception:
+        on_screen = False
+    if on_screen:  # a click on the screen: explain and stop this run, the page stays usable
+        st.error(f"השמירה נכשלה: GitHub, שבו נשמרים הנתונים, לא זמין כרגע ({last}). שום דבר לא השתנה. נסה שוב בעוד דקה.")
+        st.stop()
+    raise RuntimeError(f"could not save to the data repo ({last})")
 
 
 @st.cache_data(ttl=600, show_spinner=False)
