@@ -625,7 +625,7 @@ def english_term(kw):
         try:
             import anthropic
             r = anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY")).messages.create(
-                model=MODEL, max_tokens=40, messages=[{"role": "user", "content": f"Translate this Hebrew job-search keyword into a short English job title or search phrase for LinkedIn. Return only the phrase.\n{kw}"}])
+                model=MODEL, max_tokens=4000, messages=[{"role": "user", "content": f"Translate this Hebrew job-search keyword into a short English job title or search phrase for LinkedIn. Return only the phrase.\n{kw}"}])
             track(r)
             cache[kw] = "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip().strip('"')[:60]
         except Exception:
@@ -1217,11 +1217,13 @@ def _gen_text(j, kind):
     else:
         ask = ("Write a short personal note (max 280 characters) in " + ("Hebrew" if he else "English") + " to send to the person who posted this role "
                "(LinkedIn connection note or a first message). Say he saw the role and one concrete reason it fits. ")
-    r = client.messages.create(model=MODEL, max_tokens=900, messages=[{"role": "user", "content": (
+    r = client.messages.create(model=MODEL, max_tokens=8000, messages=[{"role": "user", "content": (
         f"Role: {j.get('title')} at {j.get('company')} ({j.get('location')})\nJob text: {(j.get('desc') or j.get('why') or '')[:2200]}\n\n" + ask + GEN_RULES +
         " Return only the text.")}])
     track(r)
     t = "".join(b.text for b in r.content if b.type == "text").strip()
+    if not t:  # the model spent the whole budget before writing: say so, never show an empty box
+        raise RuntimeError(f"Claude לא החזיר טקסט ({r.stop_reason}). נסה שוב")
     return t[:290] if kind == "note" else t
 
 
@@ -2867,7 +2869,7 @@ def _out_draft(j, contact):
     schema = {"type": "object", "additionalProperties": False, "required": ["subject", "email", "connect_note"],
               "properties": {"subject": {"type": "string"}, "email": {"type": "string"}, "connect_note": {"type": "string"}}}
     r = client.messages.create(
-        model=MODEL, max_tokens=1200,
+        model=MODEL, max_tokens=8000,
         output_config={"format": {"type": "json_schema", "schema": schema}},
         messages=[{"role": "user", "content": (
             "Write a short cold outreach from Assaf, a product manager for AI and marketing automation (n8n, workflow automation, Salesforce, Dynamics 365), "
