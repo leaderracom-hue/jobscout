@@ -144,10 +144,17 @@ def gh_url(path):
     return f"{GH}/repos/{secret('GH_DATA_REPO')}/contents/{path}"
 
 
+READ_TTL = 45  # seconds a downloaded copy of state.json is reused (writes from this server are seen at once via SH["latest"])
+
+
 def load_state():
     # GitHub may serve a read up to ~60 s old right after a write, so the copy this server last wrote wins for 90 s.
+    # 26 Nov: plus a shared read cache of READ_TTL s, so page switches and reruns stop downloading the 5.6 MB file every time.
     c = SH["latest"]
     if c and time.time() - c[2] < 90:
+        return json.loads(json.dumps(c[0])), c[1]
+    c = SH.get("read")
+    if c and time.time() - c[2] < READ_TTL:
         return json.loads(json.dumps(c[0])), c[1]
     r = requests.get(gh_url("state.json"), headers=gh_headers(), timeout=20)
     if r.status_code == 404:
@@ -155,7 +162,9 @@ def load_state():
     r.raise_for_status()
     meta = r.json()
     raw = base64.b64decode(meta["content"]) if meta.get("content") else requests.get(gh_url("state.json"), headers=gh_headers(True), timeout=30).content
-    return json.loads(raw), meta["sha"]
+    s = json.loads(raw)
+    SH["read"] = (s, meta["sha"], time.time())
+    return json.loads(json.dumps(s)), meta["sha"]
 
 
 def profile():
@@ -426,6 +435,18 @@ def _call(model, system, user, schema, effort="low"):
         raise RuntimeError("empty reply")
     pi, po = PRICE.get(model, (1, 5))
     return json.loads(text), r.usage.input_tokens / 1e6 * pi + r.usage.output_tokens / 1e6 * po
+
+
+def _json_reply(r):
+    """26 Nov: a reply cut at max_tokens or with no text block raises a clear error instead of StopIteration / JSONDecodeError."""
+    if r.stop_reason == "refusal":
+        raise RuntimeError("Claude סירב לבקשה")
+    if r.stop_reason == "max_tokens":
+        raise RuntimeError("התשובה של Claude נקטעה באמצע. נסה שוב")
+    t = "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip()
+    if not t:
+        raise RuntimeError("Claude לא החזיר טקסט. נסה שוב")
+    return json.loads(t)
 
 
 def _post_text(j, pool):
@@ -756,10 +777,11 @@ def mark_many(keys, status, block=False):
     """Sent / removed for one or many jobs in ONE save; remembers the last action so it can be undone.
     Assaf 19 Nov: block=True also blocks the jobs' companies (status None = block only, the jobs stay open but hidden)."""
     keys = list(keys)
-    newly, noname = [], []
+    newly, noname, prev = [], [], {}
 
     def m(s):
         now = dt.datetime.now(dt.timezone.utc).isoformat()
+        prev.clear()
         cfg = settings_of(s)
         newly.clear()
         noname.clear()
@@ -773,22 +795,28 @@ def mark_many(keys, status, block=False):
                     cfg["blocked_companies"].append(ck)
                     newly.append(ck)
             if status:
-                j.pop("desc", None)
+                prev[key] = s["archive"].get(key)
+                if j.get("desc"):
+                    j["desc"] = str(j["desc"])[:3000]  # 26 Nov: trimmed, no longer deleted (drafts after "sent" had no job text)
                 s["archive"][key] = {"status": status, "at": now, "title": j.get("title"), "company": j.get("company"),
                                      "urls": list((j.get("links") or {"x": j.get("url")}).values())}
     what = (status or "") + ("+block" if block else "")
     update_state(m, f"{what}: {keys[0]}" if len(keys) == 1 else f"{what} x{len(keys)}")
-    st.session_state.undo = {"keys": keys if status else [], "status": status, "blocked": list(newly), "noname": len(noname)}
+    st.session_state.undo = {"keys": keys if status else [], "status": status, "blocked": list(newly), "noname": len(noname), "prev": dict(prev)}
     for k in keys:
         st.session_state.pop(f"sel-{k}", None)
 
 
-def restore_many(keys, unblock=()):
-    keys, unblock = list(keys), list(unblock)
+def restore_many(keys, unblock=(), prev=None):
+    """prev = the archive entries before the action being undone; a job that was already archived goes back to that state."""
+    keys, unblock, prev = list(keys), list(unblock), prev or {}
 
     def m(s):
         for key in keys:
-            s["archive"].pop(key, None)
+            if prev.get(key):
+                s["archive"][key] = prev[key]
+            else:
+                s["archive"].pop(key, None)
         if unblock:
             cfg = settings_of(s)
             cfg["blocked_companies"] = [c for c in cfg["blocked_companies"] if c not in unblock]
@@ -902,7 +930,7 @@ def undo_bar():
     a, b, c = st.columns([5, 1, 1], vertical_alignment="center")
     a.success(" · ".join(parts))
     if b.button("↩ בטל", key="undo_btn", width="stretch"):
-        restore_many(u["keys"], u.get("blocked") or [])
+        restore_many(u["keys"], u.get("blocked") or [], u.get("prev"))
         st.session_state.pop("undo", None)
         st.rerun()
     if c.button("סגור", key="undo_close", width="stretch"):
@@ -1244,14 +1272,22 @@ def page_inbox():
     st.fragment(run_every=6 if running else None)(inbox_body)()  # new jobs flow in while a search runs
 
 
+def open_jobs(s):
+    """26 Nov: the ONE definition of an open job (inbox, sidebar and stats all count with it).
+    Returns (shown, hidden): hidden = open but hidden by the user's own words / blocked companies."""
+    queue = s.get("queue", {})
+    opn = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
+    hidden = [j for j in opn if excluded(s, j)]
+    eu = _open_eu(prefs_of(s))
+    shown = [j for j in opn if not excluded(s, j) and not (j.get("fit") is not None and j["fit"] < MIN_FIT and not j.get("forced"))  # under MIN_FIT: only when forced back
+             and not (j.get("arr") and intl_reason(j, None, eu))]  # outside Israel: English, fully remote, EN/HE only
+    return shown, hidden
+
+
 def inbox_body():
     s, _ = load_state()
     undo_bar()
-    queue = s.get("queue", {})
-    opn = [j for j in s["jobs"].values() if j["key"] not in s["archive"] and j["key"] not in queue]
-    hidden = [j for j in opn if excluded(s, j)]  # the user's exclude words / blocked companies
-    opn = [j for j in opn if not excluded(s, j) and not (j.get("fit") is not None and j["fit"] < MIN_FIT and not j.get("forced"))  # under MIN_FIT: never shown unless he forced it back from the "below threshold" page
-           and not (j.get("arr") and intl_reason(j, None, _open_eu(prefs_of(s))))]  # outside Israel: English, fully remote, EN/HE only
+    opn, hidden = open_jobs(s)
     cfg = settings_of(s)
     CTX["followed"] = set(cfg["followed_companies"])
     CTX["sent_by_co"] = {}
@@ -2235,7 +2271,7 @@ def optimization_block(s):
     scored = [j for j in jobs.values() if j.get("fit") is not None]
     good = [j for j in scored if j["fit"] >= MIN_FIT]
     sent = [j for j in jobs.values() if status(j) == "sent"]
-    open_n = sum(1 for j in jobs.values() if status(j) == "open" and (j.get("fit") is None or j["fit"] >= MIN_FIT) and not excluded(s, j))
+    open_n = len(open_jobs(s)[0])
     claude = sum((r.get("claudeUsd") or 0) for r in s.get("runs", []))
     apify, apify_cap = apify_usage()
     total = claude + (apify or 0)
@@ -2409,7 +2445,7 @@ def _tailor_call(user, schema, effort="medium"):
     track(r)
     if r.stop_reason == "refusal":
         raise RuntimeError("Claude declined")
-    return json.loads(next(b.text for b in r.content if getattr(b, "type", "") == "text"))
+    return _json_reply(r)
 
 
 def _job_block(j):
@@ -2448,7 +2484,7 @@ def cv_scan(j, lang):
             "usually another CV is a better base). reason = at most 12 Hebrew words. best = the cv_file name to start from. Rank all CVs, best first. "
             "Use only what is written in each CV.\n\n" + "\n\n".join(parts))}])
     track(r)
-    d = json.loads(next(b.text for b in r.content if getattr(b, "type", "") == "text"))
+    d = _json_reply(r)
     d["ranking"] = sorted([x for x in d["ranking"] if x["cv_file"] in files], key=lambda x: -x["match"])
     if d["best"] not in files and d["ranking"]:
         d["best"] = d["ranking"][0]["cv_file"]
@@ -2759,7 +2795,7 @@ def _out_draft(j, contact):
             "no invented numbers or claims, no flattery, no 'I hope this finds you well'. Say he saw the role, one concrete line on why he fits "
             "from the description, and offer to share more if relevant. Sign '" + PF.first_name(profile()) + "'. connect_note: LinkedIn connection note, max 280 characters, same tone.")}])
     track(r)
-    d = json.loads("".join(b.text for b in r.content if b.type == "text"))
+    d = _json_reply(r)
     d["connect_note"] = d["connect_note"][:290]
     return d
 
@@ -2794,6 +2830,7 @@ def _page_outreach():
     def put(**kw):
         st.session_state["out"].setdefault(k, {}).update(kw)
         O.update(kw)
+        _out_save(k, kw)  # 26 Nov: persist at once (found emails, verification and drafts were lost on refresh)
 
     st.link_button("פתח את המשרה ב-LinkedIn ↗", j.get("url") or "#")
     st.markdown("##### 1 · איש קשר")
@@ -2802,7 +2839,9 @@ def _page_outreach():
                          help="מפרסם המשרה כפי ש-LinkedIn החזיר. ריק = אין מפרסם, אפשר לחפש איש גיוס.")
     domain = c2.text_input("דומיין החברה", value=O.get("domain") or OUT.guess_domain(j.get("company")), key=f"od-{k}")
     sp_key = secret("SMARTLEAD_API_KEY")
-    if not name and sp_key and st.button("🔎 חפש אנשי גיוס בחברה (SmartProspect, חינם)", key=f"osp-{k}"):
+    if not name and not sp_key:
+        st.caption("חיפוש אנשי גיוס כבוי: חסר SMARTLEAD_API_KEY ב-Secrets. אפשר להקליד שם ידנית.")
+    if not name and st.button("🔎 חפש אנשי גיוס בחברה (SmartProspect, חינם)", key=f"osp-{k}", disabled=not sp_key):
         try:
             res = OUT.sp_search(sp_key, j.get("company") or "", domain)
             put(people=res["people"][:8], filter_id=res["filter_id"])
@@ -2816,6 +2855,7 @@ def _page_outreach():
             st.session_state.pop(f"on-{k}", None)  # let the text box take the new value
             st.rerun()
     if not name:
+        st.info("כדי להמשיך למייל ולטיוטה: הקלד שם של איש קשר, או חפש אנשי גיוס בחברה.")
         return
 
     st.markdown("##### 2 · מייל ואימות")
@@ -2881,7 +2921,7 @@ def _page_outreach():
         a, b, c = st.columns(3)
         a.link_button("✉️ פתח ב-Gmail שלי", OUT.gmail_compose_url(email, sub, body), width="stretch", disabled=not (good and ok_pace),
                       type="primary", help="נפתח חלון כתיבה בחשבון ה-Gmail האישי שלך. אתה לוחץ שליחה.")
-        if b.button("✓ שלחתי את המייל", key=f"osent-{k}", width="stretch", disabled=not good):
+        if b.button("✓ שלחתי את המייל", key=f"osent-{k}", width="stretch", disabled=not (good and ok_pace)):
             def m(s_):
                 s_.setdefault("email_sent_log", []).append(time.time())
                 s_.setdefault("outreach", {}).setdefault(k, {}).update({"email": email, "name": name, "subject": sub, "body": body, "note": note, "emailed_at": time.time()})
@@ -2929,7 +2969,7 @@ with st.sidebar:
     goal = int(secret("DAILY_GOAL", 50))
     sent_n = sent_today(state)
     st.progress(min(1.0, sent_n / max(1, goal)), text=f"נשלחו היום **{sent_n}** / {goal}")
-    open_n = sum(1 for j in state["jobs"].values() if j["key"] not in state["archive"] and j["key"] not in state.get("queue", {}))
+    open_n = len(open_jobs(state)[0])
     cap = 60
     flush_usage()
     _u = (state.get("usage") or {}).get(dt.datetime.now(IL).strftime("%Y-%m"), {})
