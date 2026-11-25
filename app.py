@@ -39,7 +39,9 @@ KEYWORDS = ["product ai", "marketing automation", "product marketing", "gtm prod
             "ai sales", "ai solutions sales", "מנהל מכירות פתרונות ai", "account executive ai", "business development ai", "solutions consultant ai",
             "workflow ai", "customer success manager",
             "נציג שירות מהבית", "עבודה מהבית", "remote customer support", "נציג שימור",
-            "ai trainer", "n8n freelance", "crm setup freelance"]
+            "ai trainer", "n8n freelance", "crm setup freelance",
+            # Assaf 24 Nov: 2 more
+            "lead generation", "appointment setter"]
 LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automation", "product marketing": "Product Marketing",
          "gtm product": "GTM Product", "gtm ai": "GTM AI", "gtm engineer": "GTM Engineer", "ai builder": "AI Builder", "ai automation": "AI Automation", "automation": "Automation",
          "crm integration": "CRM Integration", "crm automation": "CRM Automation", "ai trainer": "AI Trainer", "freelancer": "Freelancer", "מנהל מוצר": "מנהל מוצר", "מנהל מוצר אוטומציות": "מנהל מוצר אוטומציות", "אוטומציות שיווק": "אוטומציות שיווק", "מנהל פרויקט אוטומציות": "מנהל פרויקט אוטומציות",
@@ -50,7 +52,8 @@ LABEL = {"product ai": "Product AI", "marketing automation": "Marketing Automati
          "gtm automation": "GTM Automation", "hubspot": "HubSpot", "campaign manager": "Campaign Manager", "media buyer": "Media Buyer", "sales ai solution": "Sales AI Solution", "ai sales": "AI Sales", "ai solutions sales": "AI Solutions Sales",
          "מנהל מכירות פתרונות ai": "מנהל מכירות פתרונות AI", "account executive ai": "Account Executive AI", "business development ai": "Business Development AI",
          "solutions consultant ai": "Solutions Consultant AI", "workflow ai": "Workflow AI", "customer success manager": "Customer Success Manager", "נציג שירות מהבית": "נציג שירות מהבית", "עבודה מהבית": "עבודה מהבית",
-         "remote customer support": "Remote Customer Support", "נציג שימור": "נציג שימור", "n8n freelance": "n8n Freelance", "crm setup freelance": "CRM Setup Freelance"}
+         "remote customer support": "Remote Customer Support", "נציג שימור": "נציג שימור", "n8n freelance": "n8n Freelance", "crm setup freelance": "CRM Setup Freelance",
+         "lead generation": "Lead Generation", "appointment setter": "Appointment Setter"}
 WINDOWS = {24: "24 שעות", 48: "48 שעות", 72: "72 שעות", 0: "שבוע"}
 MIN_FIT = 40  # Assaf 19 Nov: threshold lowered 45 -> 40; a score under it goes straight to the archive ("auto") and is never shown
 HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
@@ -937,7 +940,9 @@ def batch_view(info, compact=False):
         if v.get("phase") == "scoring" and v.get("new") is not None:
             extra = f"{v.get('scored', 0)}/{v['new']}"
         elif v.get("phase") == "done":
-            extra = f"{v.get('new', 0)} חדשות" + (f" · {v.get('auto')} מתחת ל-{MIN_FIT}" if v.get("auto") else "")
+            # Assaf 24 Nov: plain wording. "auto" = filtered automatically (score under MIN_FIT, abroad, cyber, blocked words)
+            _n, _a = v.get("new", 0) or 0, v.get("auto") or 0
+            extra = f"{_n} משרות חדשות" + (f" · {max(_n - _a, 0)} הוצגו · {_a} סוננו (ציון מתחת ל-{MIN_FIT} / חו״ל / סייבר)" if _a else " · כולן הוצגו" if _n else "")
         elif v.get("phase") == "error":
             extra = str(v.get("error", ""))[:80]
         rows.append({"": {"done": "✅", "error": "⚠️"}.get(v.get("phase"), "⏳"), "מילה": lbl(k), "שלב": PHASE.get(v.get("phase"), v.get("phase")), "פרטים": extra})
@@ -1393,19 +1398,25 @@ def inbox_body():
     m4.metric("נשלחו היום", sent_today(s))
 
     with st.container(border=True):
-        f1, f2, f3, f4, f5 = st.columns([2.6, 1.9, 1.8, 1.7, 1.7])
+        f1, f2, f4, f5 = st.columns([3, 2.2, 1.8, 2])
         q = f1.text_input("חיפוש", placeholder="🔎 חברה או תפקיד…", key="f_q", label_visibility="collapsed")
         kw_opts = sorted({k for j in opn for k in j.get("kws", [])}, key=lbl)
         f_kw = f2.multiselect("מילה", kw_opts, format_func=lbl, placeholder="כל המילים", key="f_kw", label_visibility="collapsed")
         src_opts = sorted({x for j in opn for x in j.get("boards", [])})
-        f_src = f3.multiselect("מקור", src_opts, format_func=lambda x: BOARD.get(x, x), placeholder="כל המקורות", key="f_src", label_visibility="collapsed")
         f_min = f4.selectbox("ציון", [0, 60, 70, 80], format_func=lambda v: "כל הציונים" if not v else f"ציון {v}+", key="f_min", label_visibility="collapsed")
         f_loc = f5.multiselect("מיקום", [LOC_ALL_EU, LOC_IL, LOC_REMOTE] + sorted(EU_COUNTRIES), placeholder="כל המיקומים", key="f_loc",
                                label_visibility="collapsed", help="לפי המדינה שכתובה במיקום המשרה. האיחוד האירופי = כל 27 המדינות")
-        g1, g2, g5, g3, g4 = st.columns([3.2, 1.3, 1.4, 1.8, 2])
+        # Assaf 25 Nov: sources as always-visible buttons with the number of open jobs in each
+        src_n = {x: sum(1 for j in opn if x in j.get("boards", [])) for x in src_opts}
+        if "f_src" in st.session_state:  # a source with no open jobs left must not stay selected
+            st.session_state.f_src = [x for x in (st.session_state.f_src or []) if x in src_opts]
+        f_src = st.pills("מקור (ריק = כל המקורות)", sorted(src_opts, key=lambda x: -src_n[x]), selection_mode="multi", key="f_src",
+                         format_func=lambda x: f"{BOARD.get(x, x)} ({src_n[x]})") or []
+        g1, g2, g5, g6, g3, g4 = st.columns([3, 1.2, 1.3, 1.5, 1.7, 1.9])
         age = g1.segmented_control("פורסם", list(AGE), format_func=lambda a: AGE[a], default="all", key="age_view", label_visibility="collapsed") or "all"
         only_new = g2.toggle("רק חדשות", key="only_new")
         only_star = g5.toggle("⭐ במעקב", key="only_star", help="רק חברות שסימנת למעקב בעמוד \"חברות\"")
+        only_easy = g6.toggle(f"⚡ Easy Apply ({sum(1 for j in opn if j.get('easyApply'))})", key="only_easy", help="רק משרות LinkedIn עם הגשה קלה (Easy Apply)")
         sort = g3.selectbox("מיון", ["fit", "new", "company"], format_func={"fit": "מיון: התאמה", "new": "מיון: הכי חדש", "company": "מיון: חברה"}.get,
                             key="sort", label_visibility="collapsed")
         view = g4.segmented_control("תצוגה", ["cards", "table"], format_func={"cards": "▦ כרטיסים", "table": "☰ טבלה"}.get, default="cards",
@@ -1427,6 +1438,8 @@ def inbox_body():
         shown = [j for j in shown if is_new(j)]
     if only_star:
         shown = [j for j in shown if company_key(j.get("company")) in CTX["followed"]]
+    if only_easy:
+        shown = [j for j in shown if j.get("easyApply")]
     if hidden:
         st.caption(f"🚫 {len(hidden)} משרות פתוחות מוסתרות לפי המילים והחברות שבעמוד \"סינון\"")
     if age != "all":
@@ -1459,7 +1472,7 @@ def inbox_body():
     p1, p2, p3, p4 = st.columns([1.6, 3, 1, 1], vertical_alignment="center")
     size = p1.segmented_control("בעמוד", [10, 25, 50], default=25, key="page_size", label_visibility="collapsed") or 25
     pages = max(1, -(-n_all // size))
-    sig = (q, tuple(f_kw), tuple(f_src), tuple(f_loc), f_min, age, only_new, only_star, sort, size, bool(hist))
+    sig = (q, tuple(f_kw), tuple(f_src), tuple(f_loc), f_min, age, only_new, only_star, only_easy, sort, size, bool(hist))
     if st.session_state.get("page_sig") != sig:
         st.session_state.page_sig, st.session_state.page = sig, 1
     page = min(max(1, st.session_state.get("page", 1)), pages)
