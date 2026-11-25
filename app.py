@@ -299,12 +299,42 @@ def cv_brain():
         return {}
 
 
+REPLY_STAGES = {"replied", "interview", "offer"}
+
+
+def cv_outcomes():
+    """26 Nov: per CV file, how many applications went out with it and how many got a reply (tracker stage replied / interview / offer).
+    Cached 10 minutes in the shared dict, safe in background threads."""
+    c = SH.get("cv_outcomes")
+    if c and time.time() - c[0] < 600:
+        return c[1]
+    out = {}
+    try:
+        s, _ = load_state()
+        for k, a in s["archive"].items():
+            if a.get("status") != "sent":
+                continue
+            cv = a.get("cv") or (s["jobs"].get(k) or {}).get("cv")
+            if cv:
+                o = out.setdefault(cv, {"sent": 0, "replies": 0})
+                o["sent"] += 1
+                o["replies"] += a.get("stage") in REPLY_STAGES
+    except Exception:
+        pass
+    SH["cv_outcomes"] = (time.time(), out)
+    return out
+
+
 def brain_block(lang, files):
-    """Compact catalog of the CVs in `files`, for the prompts that choose a CV."""
+    """Compact catalog of the CVs in `files`, for the prompts that choose a CV. 26 Nov: with each CV's real reply results."""
     b = cv_brain()
     if not b:
         return ""
-    out = [b.get("rules", ""), "", "CV CATALOG (choose cv_file only from here):"]
+    res = cv_outcomes()
+    out = [b.get("rules", ""),
+           "7. Real results: a CV line may show how many applications went out with it and how many got a reply. When two CVs fit the job "
+           "about equally, choose the one with the better reply record. Never pick a CV of the wrong family only for its replies; results "
+           "under 5 applications mean nothing yet.", "", "CV CATALOG (choose cv_file only from here):"]
     for f in files:
         p = (b.get("profiles") or {}).get(f"{lang}/{f}")
         if not p:
@@ -312,7 +342,8 @@ def brain_block(lang, files):
             continue
         out.append(f"- {f} [{p['family']}] {p['positioning']} | roles: {'; '.join(p['target_roles'][:6])} | keywords: {', '.join(p['ats_keywords'][:12])} | "
                    f"tools: {', '.join(p['key_tools'][:8])} | choose when: {p['choose_when']} | weak for: {p['weak_for']}"
-                   + (f" | near duplicate of: {', '.join(p['near_duplicates'])}" if p.get("near_duplicates") else ""))
+                   + (f" | near duplicate of: {', '.join(p['near_duplicates'])}" if p.get("near_duplicates") else "")
+                   + (f" | results: sent {res[f]['sent']}, replies {res[f]['replies']}" if res.get(f, {}).get("sent") else ""))
     return "\n".join(out)
 
 
@@ -806,6 +837,8 @@ def mark_many(keys, status, block=False):
                     j["desc"] = str(j["desc"])[:3000]  # 26 Nov: trimmed, no longer deleted (drafts after "sent" had no job text)
                 s["archive"][key] = {"status": status, "at": now, "title": j.get("title"), "company": j.get("company"),
                                      "urls": list((j.get("links") or {"x": j.get("url")}).values())}
+                if j.get("cv"):
+                    s["archive"][key]["cv"] = j["cv"]  # 26 Nov: which CV went out, for reply rates per CV
                 if status == "sent":  # phase 4 tracker: first follow-up reminder
                     s["archive"][key]["follow_up"] = (dt.datetime.now(IL).date() + dt.timedelta(days=FOLLOW_UP_DAYS)).isoformat()
     what = (status or "") + ("+block" if block else "")
@@ -1345,24 +1378,28 @@ def inbox_body():
     if "f_src" in st.session_state:  # a source with no open jobs left must not stay selected
         st.session_state.f_src = [x for x in (st.session_state.f_src or []) if x in src_opts]
     kw_opts = sorted({k for j in opn for k in j.get("kws", [])}, key=lbl)
-    n_more = sum(bool(st.session_state.get(x)) for x in ("f_kw", "f_src", "f_loc", "only_new", "only_star", "only_easy")) + (st.session_state.get("age_view", "all") != "all")
+    n_more = sum(bool(st.session_state.get(x)) for x in ("f_kw", "f_loc", "only_new", "only_star")) + (st.session_state.get("age_view", "all") != "all")
     with st.container(horizontal=True, vertical_alignment="bottom"):
         q = st.text_input("חיפוש חברה או תפקיד", placeholder="חיפוש חברה או תפקיד", key="f_q", label_visibility="collapsed", icon=":material/search:", width="stretch")
         f_min = st.selectbox("ציון", [0, 60, 70, 80], format_func=lambda v: "כל הציונים" if not v else f"ציון {v}+", key="f_min", label_visibility="collapsed", width=150)
         sort = st.selectbox("מיון", ["fit", "new", "company"], format_func={"fit": "מיון: התאמה", "new": "מיון: הכי חדש", "company": "מיון: חברה"}.get,
                             key="sort", label_visibility="collapsed", width=160)
         with st.popover(f"סינון ({n_more})" if n_more else "סינון", icon=":material/filter_list:"):
-            f_src = st.pills("מקור", sorted(src_opts, key=lambda x: -src_n[x]), selection_mode="multi", key="f_src",
-                             format_func=lambda x: f"{BOARD.get(x, x)} ({src_n[x]})") or []
             f_kw = st.multiselect("מילת חיפוש", kw_opts, format_func=lbl, placeholder="כל המילים", key="f_kw")
             f_loc = st.multiselect("מיקום", [LOC_ALL_EU, LOC_IL, LOC_REMOTE] + sorted(EU_COUNTRIES), placeholder="כל המיקומים", key="f_loc",
                                    help="לפי המדינה שכתובה במיקום המשרה. האיחוד האירופי = כל 27 המדינות")
             age = st.segmented_control("פורסם", list(AGE), format_func=lambda a: AGE[a], default="all", key="age_view") or "all"
             only_new = st.toggle("רק חדשות", key="only_new")
             only_star = st.toggle("רק חברות במעקב", key="only_star")
-            only_easy = st.toggle(f"רק Easy Apply ({sum(1 for j in opn if j.get('easyApply'))})", key="only_easy")
         view = st.segmented_control("תצוגה", ["cards", "table"], format_func={"cards": ":material/view_agenda:", "table": ":material/table_rows:"}.get,
                                     default="cards", key="view", label_visibility="collapsed") or "cards"
+
+    # 26 Nov (Assaf): results per source and Easy Apply always visible, with counts
+    n_easy = sum(1 for j in opn if j.get("easyApply"))
+    with st.container(horizontal=True, vertical_alignment="center"):
+        f_src = st.pills("מקור", sorted(src_opts, key=lambda x: -src_n[x]), selection_mode="multi", key="f_src", label_visibility="collapsed",
+                         format_func=lambda x: f"{BOARD.get(x, x)} · {src_n[x]}") or []
+        only_easy = st.toggle(f"רק Easy Apply · {n_easy}", key="only_easy", disabled=not n_easy and not st.session_state.get("only_easy"))
 
     def _clear(*keys):
         for x in keys:
