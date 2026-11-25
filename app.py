@@ -1303,16 +1303,18 @@ def _gen_panel(j, kind):
     st.markdown(f"**{title}**")
     if not j.get("desc"):
         st.caption("תיאור המשרה המלא לא נשמר. הטקסט יתבסס על הכותרת ועל הסיבות לציון.")
-    if st.button("צור" if gk not in G else "צור מחדש", key=f"gb-{gk}", type="primary", width="stretch"):
+    if st.button("צור מחדש" if G.get(gk) else "צור", key=f"gb-{gk}", type="primary", width="stretch"):
         with st.spinner("Claude כותב…"):
             try:
                 G[gk] = _gen_text(j, kind)
-                st.session_state.pop(f"gt-{gk}", None)
+                st.session_state[f"gt-{gk}"] = G[gk]  # write the box's state directly: a keyed box ignores a new value=
             except Exception as e:
                 st.warning(f"הכתיבה נכשלה: {str(e)[:150]}")
-    if gk in G:
-        st.text_area("טקסט", value=G[gk], height=200 if kind == "cover" else 100, key=f"gt-{gk}", label_visibility="collapsed")
-        txt = st.session_state.get(f"gt-{gk}", G[gk])
+    if G.get(gk):
+        if not str(st.session_state.get(f"gt-{gk}") or "").strip():  # Streamlit drops widget state while the popover is closed
+            st.session_state[f"gt-{gk}"] = G[gk]
+        st.text_area("טקסט", height=200 if kind == "cover" else 100, key=f"gt-{gk}", label_visibility="collapsed")
+        txt = st.session_state.get(f"gt-{gk}") or G[gk]
         st.caption("ערוך כאן, ואז סמן והעתק. הטקסט לא נשלח לשום מקום.")
         if kind == "cover":
             fn = "Cover-Letter-" + re.sub(r"[^A-Za-z0-9]+", "-", str(j.get("company") or "job")).strip("-") + ".pdf"
