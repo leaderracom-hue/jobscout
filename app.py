@@ -9,6 +9,7 @@ Searching runs engine/mini-agent/scout.mjs (Node) — the same code as the local
 import base64
 import datetime as dt
 import hmac
+from html import escape as E  # Assaf 25 Nov: job and model text is untrusted; escape it before unsafe_allow_html
 import json
 import os
 import re
@@ -395,7 +396,8 @@ EMP_HE = {"Full-Time": "משרה מלאה", "Part-Time": "חלקית", "Contract
 ARR_HE = {"Remote": "מרחוק", "Hybrid": "היברידי", "On-site": "מהמשרד", "Unknown": "לא ידוע"}
 ELIG_HE = {"eligible": "זכאי", "needs_verification": "דורש אימות", "not_eligible": "לא מתאים לתנאים"}
 MODEL = "claude-haiku-5-5"  # Assaf 21 Nov: the cheapest model for EVERYTHING in the app (saves tokens)
-SCORE_MODEL = TIE_MODEL = MODEL  # 2 independent reviews; a third decides gaps > 10
+SCORE_MODEL = TIE_MODEL = MODEL
+B_BAND = (25, 100)  # 25 Nov: second review skipped only for clear rejects; a single review ran ~10 points high on good jobs  # 2 independent reviews; a third decides gaps > 10
 PRICE = {"claude-haiku-5-5": (0.10, 0.50), "claude-sonnet-5-5": (2.0, 10.0)}  # $ per 1M tokens in / out
 
 EVAL_SCHEMA = {
@@ -486,18 +488,29 @@ def flush_usage(force=False):
                 q[k] += add[k]
 
 
+def _redact(e):
+    """Error text for the screen and the saved state, with any key=... value masked."""
+    from outreach import redact
+    return redact(str(e))
+
+
 def _client():
     import anthropic
     return anthropic.Anthropic(api_key=secret("ANTHROPIC_API_KEY"), max_retries=4)
 
 
-def _call(model, system, user, schema, effort="medium"):
+def _call(model, system, user, schema, effort="low"):
+    """Assaf 25 Nov (cost): scoring runs at effort "low" (the model thinks less; output tokens were ~85% of the bill)."""
     r = _client().messages.create(model=model, max_tokens=16000, system=system, messages=[{"role": "user", "content": user}],
                                   output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}})
     track(r)
     if r.stop_reason == "refusal":
         raise RuntimeError("refused")
-    text = next(b.text for b in r.content if getattr(b, "type", "") == "text")
+    if r.stop_reason == "max_tokens":
+        raise RuntimeError("the reply was cut at max_tokens")
+    text = next((b.text for b in r.content if getattr(b, "type", "") == "text"), "")
+    if not text.strip():
+        raise RuntimeError("empty reply")
     pi, po = PRICE.get(model, (1, 5))
     return json.loads(text), r.usage.input_tokens / 1e6 * pi + r.usage.output_tokens / 1e6 * po
 
@@ -506,7 +519,7 @@ def _post_text(j, pool):
     return "\n".join([
         f"TODAY'S DATE: {dt.date.today()}", f"TITLE: {j['title']}", f"COMPANY: {j.get('company') or 'not stated'}",
         f"LOCATION ON THE POST: {j.get('location') or 'not stated'}", f"SOURCE FIELDS: workplace={j.get('workplace') or 'n/a'}", "",
-        "FULL DESCRIPTION:", str(j.get("desc") or "")[:9000] or "(the post has no description text; judge from the title and company, most fields are Unknown)",
+        "FULL DESCRIPTION:", str(j.get("desc") or "")[:6000] or "(the post has no description text; judge from the title and company, most fields are Unknown)",
         "", f"CV FILES TO CHOOSE FROM: {json.dumps(pool, ensure_ascii=False)}"])
 
 
@@ -549,17 +562,21 @@ def score_job(j, kw, prefs=None):
     b_user = ("Independent second review. Do not assume any earlier score. Re-read the post from the top: first list every requirement "
               "and decide whether each is truly a must-have or only nice-to-have; check for requirements a quick reading would over- or "
               "under-weight; then score with the same method.\n\n" + post)
-    with ThreadPoolExecutor(2) as ex:
-        fa, fb = ex.submit(_call, SCORE_MODEL, system, a_user, EVAL_SCHEMA), ex.submit(_call, SCORE_MODEL, system, b_user, EVAL_SCHEMA)
-        (a, ua), (b, ub) = fa.result(), fb.result()
-    usd = ua + ub
+    a, usd = _call(SCORE_MODEL, system, a_user, EVAL_SCHEMA)
+    # Assaf 25 Nov (cost): the second review runs only where it can change the decision - near the threshold (MIN_FIT) and in the
+    # middle band. A clear reject (< 25) keeps review A alone; good jobs keep both reviews (one review alone scored them ~10 points high in the 25 Nov test).
+    if B_BAND[0] <= a["professional_match"] <= B_BAND[1]:
+        b, ub = _call(SCORE_MODEL, system, b_user, EVAL_SCHEMA)
+        usd += ub
+    else:
+        b = a
     tie = None
-    if abs(a["professional_match"] - b["professional_match"]) > 10 or abs(a["eligibility_match"] - b["eligibility_match"]) > 10:
+    if b is not a and abs(a["professional_match"] - b["professional_match"]) > 10 or abs(a["eligibility_match"] - b["eligibility_match"]) > 10:
         t_user = (post + "\n\nTwo independent reviews of this post disagree by more than 10 points. REVIEW A:\n" + json.dumps(a, ensure_ascii=False)
                   + "\n\nREVIEW B:\n" + json.dumps(b, ensure_ascii=False)
                   + "\n\nExplain in Hebrew (disagreement, max 2 sentences) which requirements caused the gap and which reading the post supports. "
                     "Decide the scores yourself from the post and the verified candidate facts, using the same method. Do not average.")
-        tie, ut = _call(TIE_MODEL, system, t_user, TIE_SCHEMA, effort="high")
+        tie, ut = _call(TIE_MODEL, system, t_user, TIE_SCHEMA, effort="medium")
         usd += ut
     base = a  # requirement list + extracted terms come from review A; the decision fields from the tie-break when there was one
     dec = tie or {k: round((a[k] + b[k]) / 2) if k in ("professional_match", "eligibility_match") else a[k]
@@ -576,7 +593,7 @@ def score_job(j, kw, prefs=None):
             "loc_terms": {k: base["location"][k] for k in ("allowed_work_from", "residency_or_permit")},
             "reqs": base["requirements"][:12], "verdict": dec["verdict"], "why": dec["why_he"], "gaps": dec["gaps"][:4], "lang": lang,
             "cv": base["cv_file"] if base["cv_file"] in pool else (pool[0] if pool else ""),
-            "evals": {"a": compact(a), "b": compact(b), "tie": tie}, "flag": bool(tie), "usd": usd}
+            "evals": {"a": compact(a), "b": compact(b) if b is not a else None, "tie": tie}, "flag": bool(tie), "usd": usd}
 
 
 def runs_today(s):
@@ -696,6 +713,18 @@ def search_core(kw, hours, batch, report, prefs=None):
     # Assaf 21 Nov: jobs outside Israel must be in English - checked for free before scoring
     blocked += [(k, j, "משרה בחו״ל שלא כתובה באנגלית") for k, j in fresh if is_international(j) and not is_english_post(j)]
     fresh = [(k, j) for k, j in fresh if not (is_international(j) and not is_english_post(j))]
+    # Assaf 25 Nov (cost): keywords of one search run in parallel and often return the same posting. The first keyword to reach a job
+    # scores it; the others only add their keyword to it (no second Claude bill for the same job).
+    with SH["lock"]:
+        claims = SH.setdefault("score_claims", {})
+        now_t = time.time()
+        for ck in [x for x, (_, t) in claims.items() if now_t - t > 3 * 3600]:
+            claims.pop(ck, None)
+        dup = {k: j for k, j in fresh if k in claims and claims[k][0] != kw}
+        for k, j in fresh:
+            if k not in dup:
+                claims[k] = (kw, now_t)
+    fresh = [(k, j) for k, j in fresh if k not in dup]
     report("scoring", found=len(found), new=len(fresh))
     scores, usd = {}, 0.0
     with ThreadPoolExecutor(8) as ex:
@@ -707,7 +736,7 @@ def search_core(kw, hours, batch, report, prefs=None):
                 usd += sc.pop("usd")
                 scores[k] = sc
             except Exception as e:
-                scores[k] = {"scoreError": str(e)[:160]}
+                scores[k] = {"scoreError": _redact(e)[:160]}
             report("scoring", scored=i)
     now = dt.datetime.now(dt.timezone.utc).isoformat()
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=HISTORY_HOURS)).isoformat()
@@ -718,7 +747,7 @@ def search_core(kw, hours, batch, report, prefs=None):
 
     def mutate(st_):
         intl_out.clear()
-        for k, j in seen_again.items():
+        for k, j in list(seen_again.items()) + list(dup.items()):  # dup: scored by another keyword of this search
             h = st_["jobs"].get(k)
             if not h:
                 continue
@@ -774,7 +803,7 @@ def start_batch(kws, hours, prefs=None):
         try:
             search_core(k, hours, batch, report, prefs)
         except Exception as e:
-            report("error", error=str(e)[:300])
+            report("error", error=_redact(e)[:300])
 
     def run_all():
         with ThreadPoolExecutor(3) as ex:
@@ -909,7 +938,7 @@ def sent_today(s):
 @st.cache_data(ttl=300, show_spinner=False)
 def apify_usage():
     try:
-        d = requests.get("https://api.apify.com/v2/users/me/limits", params={"token": secret("APIFY_API_TOKEN")}, timeout=10).json()["data"]
+        d = requests.get("https://api.apify.com/v2/users/me/limits", headers={"Authorization": "Bearer " + str(secret("APIFY_API_TOKEN"))}, timeout=10).json()["data"]
         return d["current"]["monthlyUsageUsd"], d["limits"]["maxMonthlyUsageUsd"]
     except Exception:
         return None, None
@@ -1059,7 +1088,7 @@ def ask_panel(j):
                 try:
                     hist.append((asked, ask_claude(j, asked, hist)))
                 except Exception as e:
-                    st.info(f"השאלה נכשלה: {str(e)[:200]}", icon="⚠️")
+                    st.info(f"השאלה נכשלה: {_redact(e)[:200]}", icon="⚠️")
                     return
             st.rerun()
 
@@ -1122,7 +1151,7 @@ def card(j, new=False):
     if j.get("easyApply"):
         tags += '<span class="tag t-ok">Easy Apply</span>'
     if cv:
-        tags += f'<span class="tag t-cv">קו״ח {"עב" if j.get("lang") == "he" else "EN"}: {cv.replace(".pdf", "")}</span>'
+        tags += f'<span class="tag t-cv">קו״ח {"עב" if j.get("lang") == "he" else "EN"}: {E(cv.replace(".pdf", ""))}</span>'
     # Assaf 21 Nov: verified scoring - terms + eligibility shown on the card, both reviews in the details
     if j.get("elig_status"):
         cls = {"eligible": "t-ok", "needs_verification": "t-warn", "not_eligible": "t-no"}.get(j["elig_status"], "")
@@ -1130,29 +1159,29 @@ def card(j, new=False):
         tags += f'<span class="tag">{EMP_HE.get(j.get("emp"), j.get("emp"))} · {ARR_HE.get(j.get("arr"), j.get("arr"))}</span>'
         if j.get("flag"):
             tags += '<span class="tag t-kw">⚖️ הוכרע</span>'
-    why = j.get("why") or (f"הדירוג נכשל: {j['scoreError']}" if j.get("scoreError") else "")
+    why = E(str(j.get("why") or (f"הדירוג נכשל: {j['scoreError']}" if j.get("scoreError") else "")))
     gaps = j.get("gaps") or []
-    more = ("<br>" + " · ".join(str(g) for g in gaps[:3])) if gaps else ""
+    more = ("<br>" + " · ".join(E(str(g)) for g in gaps[:3])) if gaps else ""
     if j.get("pro") is not None:
         ev = j.get("evals") or {}
         icon = {"met": "✅", "partial": "🟡", "missing": "❌", "unknown": "❔"}
-        reqs = "".join(f"<li>{icon.get(q.get('status'), '')} {q.get('requirement')} {'(חובה)' if q.get('kind') == 'must' else ''}</li>"
+        reqs = "".join(f"<li>{icon.get(q.get('status'), '')} {E(str(q.get('requirement') or ''))} {'(חובה)' if q.get('kind') == 'must' else ''}</li>"
                        for q in (j.get("reqs") or [])[:8])
         lt = j.get("loc_terms") or {}
         more += (f"<br><b>מקצועי {j['pro']} · זכאות {j.get('elig')} · סופי {fit}</b>"
-                 + (" · " + " · ".join(j.get("elig_notes") or []) if j.get("elig_notes") else "")
-                 + f"<br>מותר לעבוד מ: {lt.get('allowed_work_from', '?')} · מגבלות: {lt.get('residency_or_permit', '?')}"
+                 + (" · " + " · ".join(E(str(x)) for x in (j.get("elig_notes") or [])) if j.get("elig_notes") else "")
+                 + f"<br>מותר לעבוד מ: {E(str(lt.get('allowed_work_from', '?')))} · מגבלות: {E(str(lt.get('residency_or_permit', '?')))}"
                  + (f"<ul style='margin:4px 0'>{reqs}</ul>" if reqs else "")
-                 + f"<span class='sub'>הערכה א׳ {ev.get('a', {}).get('professional_match')} · הערכה ב׳ {ev.get('b', {}).get('professional_match')}"
-                 + (f" · הכרעה: {ev['tie'].get('disagreement')}" if ev.get("tie") else "") + "</span>")
+                 + f"<span class='sub'>הערכה א׳ {(ev.get('a') or {}).get('professional_match')} · הערכה ב׳ {(ev.get('b') or {}).get('professional_match', 'לא נדרשה')}"
+                 + (f" · הכרעה: {E(str(ev['tie'].get('disagreement') or ''))}" if ev.get("tie") else "") + "</span>")
     with st.container(border=True):
         c0, c1, c2 = st.columns([0.35, 0.9, 10], vertical_alignment="top")
         c0.checkbox("בחר", key=f"sel-{k}", label_visibility="collapsed")
         c1.markdown(f'<div class="fit {fit_cls(fit)}">{fit if fit is not None else "—"}<small>התאמה</small></div>'
                     + (f'<div class="subfit">מקצועי {j["pro"]}<br>זכאות {j.get("elig")}</div>' if j.get("pro") is not None else ""), unsafe_allow_html=True)
         c2.markdown(
-            f'<div class="jt"><a href="{j.get("url")}" target="_blank">{j.get("title")}</a></div>'
-            f'<div class="sub">{j.get("company") or "—"} · {j.get("location") or "ישראל"} · {ago(j)}</div>'
+            f'<div class="jt"><a href="{E(str(j.get("url") or "#"))}" target="_blank" rel="noopener">{E(str(j.get("title") or ""))}</a></div>'
+            f'<div class="sub">{E(str(j.get("company") or "—"))} · {E(str(j.get("location") or "ישראל"))} · {ago(j)}</div>'
             + (f'<div class="warn">⚠️ כבר שלחת לחברה הזאת {CTX["sent_by_co"][ck]} פעמים</div>' if ck and CTX["sent_by_co"].get(ck) else "")
             + f'<div class="tags">{tags}</div>'
             + (f'<details class="why"><summary>למה זה מתאים</summary>{why}{more}</details>' if why else ""),
@@ -1309,7 +1338,7 @@ def _gen_panel(j, kind):
                 G[gk] = _gen_text(j, kind)
                 st.session_state[f"gt-{gk}"] = G[gk]  # write the box's state directly: a keyed box ignores a new value=
             except Exception as e:
-                st.warning(f"הכתיבה נכשלה: {str(e)[:150]}")
+                st.warning(f"הכתיבה נכשלה: {_redact(e)[:150]}")
     if G.get(gk):
         if not str(st.session_state.get(f"gt-{gk}") or "").strip():  # Streamlit drops widget state while the popover is closed
             st.session_state[f"gt-{gk}"] = G[gk]
@@ -1692,7 +1721,7 @@ def search_ask_panel(g, keys, label, s):
                 try:
                     hist.append((asked, ask_search(rows, label, asked, hist)))
                 except Exception as e:
-                    st.info(f"השאלה נכשלה: {str(e)[:200]}", icon="⚠️")
+                    st.info(f"השאלה נכשלה: {_redact(e)[:200]}", icon="⚠️")
                     return
             st.rerun()
 
@@ -2087,7 +2116,7 @@ def ask_data_panel():
                 try:
                     hist.append((asked, ask_data(asked, hist)))
                 except Exception as e:
-                    st.info(f"השאלה נכשלה: {str(e)[:200]}", icon="⚠️")
+                    st.info(f"השאלה נכשלה: {_redact(e)[:200]}", icon="⚠️")
                     return
             st.rerun()
 
@@ -2233,6 +2262,7 @@ def run_research(s):
 
 
 def _card(bg, fg, title, body, top=""):
+    title, body, top = E(str(title)), E(str(body)), E(str(top))
     return (f"<div style='background:{bg};border-radius:12px;padding:10px 12px;height:100%'>"
             + (f"<div style='font-size:.75rem;color:{fg};opacity:.85'>{top}</div>" if top else "")
             + f"<div style='font-weight:700;color:{fg};font-size:1.05rem'>{title}</div>"
@@ -2263,7 +2293,7 @@ def research_block(s):
             try:
                 data = run_research(s)
             except Exception as e:
-                st.info(f"הדוח נכשל: {str(e)[:200]}", icon="⚠️")
+                st.info(f"הדוח נכשל: {_redact(e)[:200]}", icon="⚠️")
                 return
         update_state(lambda st_: st_.__setitem__("research", {"at": dt.datetime.now(dt.timezone.utc).isoformat(), "data": data}), "research report")
         st.rerun()
@@ -2278,7 +2308,7 @@ def research_block(s):
         return
     funnel, kw, src, bands = research_charts(s)
     st.markdown(f"<div style='background:var(--js-blue-l);border-right:5px solid var(--js-blue);border-radius:10px;padding:12px 16px;font-size:1.05rem;"
-                f"font-weight:600;color:#1d3f8f;margin:6px 0 12px'>🧭 {d['headline']}</div>", unsafe_allow_html=True)
+                f"font-weight:600;color:#1d3f8f;margin:6px 0 12px'>🧭 {E(str(d['headline']))}</div>", unsafe_allow_html=True)
     if d["kpis"]:
         cols = st.columns(len(d["kpis"][:6]))
         for c, k in zip(cols, d["kpis"][:6]):
@@ -2328,7 +2358,7 @@ def research_block(s):
                 f"<div style='display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #eef0f3'>"
                 f"<span style='min-width:92px;text-align:center;background:{ACTION[x['action']][1]};color:{ACTION[x['action']][2]};"
                 f"border-radius:999px;padding:1px 8px;font-size:.78rem'>{ACTION[x['action']][0]}</span>"
-                f"<b style='min-width:170px'>{x['keyword']}</b><span style='color:#4b5563;font-size:.86rem'>{x['reason']}</span></div>"
+                f"<b style='min-width:170px'>{E(str(x['keyword']))}</b><span style='color:#4b5563;font-size:.86rem'>{E(str(x['reason']))}</span></div>"
                 for x in sorted(d["keyword_actions"], key=lambda x: ["boost", "keep", "watch", "drop"].index(x["action"])))
             st.markdown(html, unsafe_allow_html=True)
     if d["open_questions"]:
@@ -2714,7 +2744,7 @@ def page_tailor():
                 update_state(lambda st_: st_["jobs"].get(k, {}).__setitem__("cvscan", scan), f"cv scan: {k}")
                 st.session_state.pop(f"tailor_cv_{k}", None)
             except Exception as e:
-                st.info(f"סריקת קורות החיים נכשלה: {str(e)[:150]}", icon="⚠️")
+                st.info(f"סריקת קורות החיים נכשלה: {_redact(e)[:150]}", icon="⚠️")
                 scan = None
     if scan and scan.get("best") in files:
         st.session_state.setdefault(f"tailor_cv_{k}", scan["best"])
@@ -2734,7 +2764,7 @@ def page_tailor():
     try:
         orig = cv_text(lang if base in cv_files(lang) else "en", base)
     except Exception as e:
-        st.info(f"לא הצלחתי לקרוא את הקובץ: {str(e)[:150]}", icon="⚠️")
+        st.info(f"לא הצלחתי לקרוא את הקובץ: {_redact(e)[:150]}", icon="⚠️")
         return
     a, b = st.columns(2)
     a.download_button("⬇ הורד את המקור", cv_bytes(lang if base in cv_files(lang) else "en", base), file_name=base, mime="application/pdf", width="stretch")
@@ -2755,7 +2785,7 @@ def page_tailor():
                                        "recommendations: 3-6 concrete edits. " + TAILOR_RULES, ANALYZE_SCHEMA)
                 S.pop("t", None)
             except Exception as e:
-                st.info(f"הניתוח נכשל: {str(e)[:200]}", icon="⚠️")
+                st.info(f"הניתוח נכשל: {_redact(e)[:200]}", icon="⚠️")
     an = S.get("an")
     if not an:
         st.caption("כ-$0.05–0.10 לניתוח. המקור לא משתנה.")
@@ -2772,7 +2802,7 @@ def page_tailor():
         st.markdown("\n".join(f"- {ic[x['coverage']]} **{x['requirement']}** · {x['evidence_in_cv']}" for x in mh))
         st.markdown("**פערים**\n" + "\n".join(f"- `{x['type']}` **{x['item']}** · {x['suggestion']}" for x in an["gaps"]))
         st.markdown("**המלצות**\n" + "\n".join(f"- {r}" for r in an["recommendations"]))
-        st.markdown("**מילות מפתח:** " + " ".join(f"<span class='tag {'t-ok' if x['in_cv'] else 't-warn'}'>{x['keyword']}</span>" for x in an["ats_keywords"]),
+        st.markdown("**מילות מפתח:** " + " ".join(f"<span class='tag {'t-ok' if x['in_cv'] else 't-warn'}'>{E(str(x['keyword']))}</span>" for x in an["ats_keywords"]),
                     unsafe_allow_html=True)
 
     st.markdown("##### 2 · אישור מיומנויות")
@@ -2811,7 +2841,7 @@ def page_tailor():
                 except Exception:
                     pass
             except Exception as e:
-                st.info(f"היצירה נכשלה: {str(e)[:200]}", icon="⚠️")
+                st.info(f"היצירה נכשלה: {_redact(e)[:200]}", icon="⚠️")
     if not S.get("t"):
         st.caption("כ-$0.10–0.20 לגרסה.")
         return
@@ -2831,7 +2861,7 @@ def page_tailor():
                                on_click=_save_resume, args=(f"{stem}.pdf", edited, "he" if _he else "en"))
             e0.caption("עותק נשמר גם בתיקיית Resume של " + ("עברית" if _he else "אנגלית") + " (דרך Sync-Cover-Letters.bat)")
         except Exception as e:
-            e0.caption(f"ה-PDF נכשל: {str(e)[:80]}")
+            e0.caption(f"ה-PDF נכשל: {_redact(e)[:80]}")
         e1.download_button("⬇ Word", docx_bytes(edited), file_name=f"{stem}.docx", width="stretch",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
         e2.download_button("⬇ Markdown", edited.encode("utf-8"), file_name=f"{stem}.md", width="stretch")
@@ -2893,7 +2923,7 @@ def page_outreach():
     except Exception as e:
         if type(e).__name__ in ("RerunException", "StopException"):
             raise
-        st.error(f"שגיאה בעמוד: {type(e).__name__}: {str(e)[:300]}")
+        st.error(f"שגיאה בעמוד: {type(e).__name__}: {_redact(e)[:300]}")
 
 
 def _page_outreach():
@@ -2929,7 +2959,7 @@ def _page_outreach():
             res = OUT.sp_search(sp_key, j.get("company") or "", domain)
             put(people=res["people"][:8], filter_id=res["filter_id"])
         except Exception as e:
-            st.warning(f"החיפוש נכשל: {str(e)[:150]}")
+            st.warning(f"החיפוש נכשל: {_redact(e)[:150]}")
     if O.get("people") and not name:
         pick = st.radio("נמצאו", [f"{p['name']} · {p['title']}" for p in O["people"]], key=f"opk-{k}")
         st.caption("בחר ולחץ 'השתמש'. הכתובת לא נחשפת עד שתלחץ על חיפוש המייל.")
@@ -2958,7 +2988,7 @@ def _page_outreach():
                 try:
                     found = fn()
                 except Exception as e:
-                    log.append(f"{label}: {str(e)[:100]}")
+                    log.append(f"{label}: {_redact(e)[:100]}")
                     continue
                 log.append(f"{label}: {'נמצא' if found else 'לא נמצא'}")
                 if found:
@@ -2977,7 +3007,7 @@ def _page_outreach():
                 put(email=email, verified=OUT.mv_verify(mv_key, email))
                 st.rerun()
             except Exception as e:
-                st.warning(f"האימות נכשל: {str(e)[:150]}")
+                st.warning(f"האימות נכשל: {_redact(e)[:150]}")
     v = O.get("verified")
     if v:
         (st.success if v["ok"] else st.error)(f"MillionVerifier: {v['result']}" + ("" if v["ok"] else " · לא נשלח למייל הזה"))
@@ -2991,7 +3021,7 @@ def _page_outreach():
                 st.session_state.pop(f"osub-{k}", None), st.session_state.pop(f"obody-{k}", None), st.session_state.pop(f"onote-{k}", None)
                 st.rerun()
             except Exception as e:
-                st.warning(f"הכתיבה נכשלה: {str(e)[:150]}")
+                st.warning(f"הכתיבה נכשלה: {_redact(e)[:150]}")
     if O.get("body"):
         sub = st.text_input("נושא", value=O["subject"], key=f"osub-{k}")
         body = st.text_area("גוף המייל", value=O["body"], height=190, key=f"obody-{k}")

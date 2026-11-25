@@ -19,6 +19,14 @@ MAX_PER_HOUR = 12
 GAP_SECONDS = 300
 
 
+_SECRET_RX = re.compile(r"((?:api_key|token|api|key)=)[^&\s'\"]+", re.I)
+
+
+def redact(text):
+    """Strip key=... values from error text before it reaches the screen (SmartProspect and MillionVerifier only accept the key in the URL)."""
+    return _SECRET_RX.sub(lambda m: m.group(1) + "***", str(text))
+
+
 def split_name(full):
     p = re.sub(r"[^\w\s\-'.]", " ", full or "", flags=re.U).split()
     return (p[0], p[-1]) if len(p) >= 2 else ((p[0], "") if p else ("", ""))
@@ -86,7 +94,7 @@ def apollo_match(key, name, domain):
 # ---- 3. Apify (last alternative) ----
 def apify_find(token, name, domain):
     f, l = split_name(name)
-    r = requests.post(f"https://api.apify.com/v2/acts/{APIFY_ACTOR}/run-sync-get-dataset-items", params={"token": token, "timeout": 90},
+    r = requests.post(f"https://api.apify.com/v2/acts/{APIFY_ACTOR}/run-sync-get-dataset-items", params={"timeout": 90}, headers={"Authorization": f"Bearer {token}"},
                       json={"persons": [{"firstName": f, "lastName": l, "domain": domain}]}, timeout=120)
     if r.status_code not in (200, 201):
         raise RuntimeError(f"Apify {r.status_code}: {r.text[:120]}")

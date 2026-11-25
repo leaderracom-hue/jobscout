@@ -155,7 +155,7 @@ const normKey = j => (String(j.company || "").toLowerCase().replace(/[^a-z֐-׿0
 
 // ---------- apify ----------
 const T = env.APIFY_API_TOKEN;
-async function apify(pathname, init) { const r = await fetch("https://api.apify.com/v2" + pathname + (pathname.includes("?") ? "&" : "?") + "token=" + T, init); return r.json(); }
+async function apify(pathname, init = {}) { const r = await fetch("https://api.apify.com/v2" + pathname, { ...init, headers: { ...(init.headers || {}), Authorization: "Bearer " + T } }); return r.json(); } // Assaf 25 Nov: token in a header, never in the URL
 // timeoutSecs: Apify stops the run there and keeps every job already saved (pay-per-result → you pay only for those).
 // AllJobs fetches each job page and was the slowest source (~2 min); LinkedIn ~40–65 s. Capping both halves a search.
 const TIMEOUT = { "getascraper/alljobs-scraper": 180, "bebity/linkedin-jobs-scraper": 90 }; // 18 Nov: AllJobs 75s timed out with nothing saved -> 40 rows, 180s
