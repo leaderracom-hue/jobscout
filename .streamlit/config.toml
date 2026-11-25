@@ -1,3 +1,38 @@
 [theme]
-# Assaf 21 Nov: pastel blue primary (text on primary buttons is set dark in app.py for contrast); green for positive states via CSS
-primaryColor = "#8EBCE6"
+# 26 Nov redesign (docs/upgrade-plan.html): calm, dense cockpit. One dark blue for actions, slate neutrals, colour only for the score.
+primaryColor = "#1E40AF"
+backgroundColor = "#F8FAFC"
+secondaryBackgroundColor = "#F1F5F9"
+textColor = "#0F172A"
+linkColor = "#1E40AF"
+borderColor = "#E2E8F0"
+showWidgetBorder = true
+baseRadius = "8px"
+buttonRadius = "8px"
+baseFontSize = 15
+font = "Assistant:https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap"
+headingFont = "Assistant:https://fonts.googleapis.com/css2?family=Assistant:wght@600;700;800&display=swap"
+codeFont = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
+greenColor = "#15803D"
+orangeColor = "#B45309"
+redColor = "#B91C1C"
+blueColor = "#1E40AF"
+
+[theme.dark]
+primaryColor = "#2563EB"
+backgroundColor = "#0B1220"
+secondaryBackgroundColor = "#111827"
+textColor = "#E5E7EB"
+linkColor = "#93C5FD"
+borderColor = "#243041"
+greenColor = "#4ADE80"
+orangeColor = "#FBBF24"
+redColor = "#F87171"
+blueColor = "#60A5FA"
+
+[theme.sidebar]
+backgroundColor = "#0F172A"
+secondaryBackgroundColor = "#1E293B"
+textColor = "#E2E8F0"
+borderColor = "#334155"
+primaryColor = "#3B82F6"

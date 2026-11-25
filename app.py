@@ -61,39 +61,45 @@ HISTORY_HOURS = 72  # Assaf: past searches can be reopened for 72 hours
 BOARD = {"linkedin": "LinkedIn", "indeed": "Indeed", "drushim": "דרושים", "alljobs": "AllJobs", "jobmaster": "JobMaster", "careers": "דף קריירה",
          "himalayas": "Himalayas"}
 
-# Assaf 21 Nov: pastel palette, ~75% blue / 25% green, set once here and used everywhere (CSS variables + chart colors)
-PAL = {"blue": "#8EBCE6", "blue_l": "#DCECF9", "green": "#A8D8C0", "green_l": "#E1F2E8",
-       "blue_ink": "#1d4f7f", "green_ink": "#1f5e43", "ink": "#12324f"}
+# 26 Nov redesign: colours come from .streamlit/config.toml; these tokens only cover what the theme has no key for (score chip, tags),
+# in a light and a dark set picked from the active theme. PAL keeps its keys for the charts and report cards.
+_DARK = getattr(getattr(st.context, "theme", None), "type", "light") == "dark"
+PAL = {"blue": "#2563EB" if _DARK else "#1E40AF", "blue_l": "#1E3A8A" if _DARK else "#DBEAFE", "green": "#4ADE80" if _DARK else "#15803D",
+       "green_l": "#14321F" if _DARK else "#DCFCE7", "blue_ink": "#93C5FD" if _DARK else "#1E40AF", "green_ink": "#4ADE80" if _DARK else "#15803D",
+       "ink": "#E5E7EB" if _DARK else "#0F172A"}
+_T = ({"surface": "#111827", "muted": "#94A3B8", "line": "#243041", "good": "#4ADE80", "good_l": "#14321F", "mid": "#FBBF24", "mid_l": "#3A2C12",
+       "low": "#F87171", "low_l": "#3D1D1B", "acc": "#93C5FD", "acc_l": "#1E3A8A", "na_l": "#1F2937"} if _DARK else
+      {"surface": "#FFFFFF", "muted": "#475569", "line": "#CBD5E1", "good": "#15803D", "good_l": "#DCFCE7", "mid": "#B45309", "mid_l": "#FEF3C7",
+       "low": "#B91C1C", "low_l": "#FEE2E2", "acc": "#1E40AF", "acc_l": "#DBEAFE", "na_l": "#F1F5F9"})
 st.set_page_config(page_title="Job Scout", page_icon=":material/work:", layout="wide")
 st.markdown("""<style>
-:root{--js-blue:#8EBCE6;--js-blue-l:#DCECF9;--js-green:#A8D8C0;--js-green-l:#E1F2E8;--js-blue-ink:#1d4f7f;--js-green-ink:#1f5e43;--js-ink:#12324f}
-button[kind="primary"],button[kind="primaryFormSubmit"],[data-testid="stBaseButton-primary"],[data-testid="stBaseButton-primaryFormSubmit"]{color:var(--js-ink) !important;font-weight:600}
-[data-testid="stBaseButton-primary"]:hover{background:var(--js-green) !important;border-color:var(--js-green) !important}
-[data-testid="stBaseButton-pillsActive"],[data-testid="stBaseButton-segmented_controlActive"]{background:var(--js-green-l) !important;border-color:var(--js-green) !important;color:var(--js-green-ink) !important}
-.subfit{font-size:.68rem;color:#4b5563;text-align:center;margin-top:4px;line-height:1.25}
-.t-warn{color:#8a5a00;border-color:#f0d9a8;background:#fff8e8}.t-no{color:#5b6474;border-color:#dde1e8;background:#eef0f3}
-.block-container{max-width:1150px;padding-top:3.8rem}
+:root{--js-blue:%(acc)s;--js-blue-l:%(acc_l)s;--js-green:%(good)s;--js-green-l:%(good_l)s;--js-blue-ink:%(acc)s;--js-green-ink:%(good)s;
+      --js-surface:%(surface)s;--js-muted:%(muted)s;--js-line:%(line)s;--js-mid:%(mid)s;--js-mid-l:%(mid_l)s;--js-low:%(low)s;--js-low-l:%(low_l)s;--js-na-l:%(na_l)s}
+.block-container{max-width:1120px;padding-top:3.4rem}
 .stMainBlockContainer, .stMarkdown, .stCaption, [data-testid="stExpander"], [data-testid="stSidebarContent"]{direction:rtl;text-align:right}
-[data-testid="stMetric"]{background:var(--js-blue-l);border:1px solid var(--js-blue);border-radius:12px;padding:10px 14px}
-[data-testid="stMetricValue"]{font-size:1.6rem}
-.brand{font-weight:700;font-size:1.35rem;margin:-6px 0 10px}.brand small{display:block;font-weight:400;font-size:.78rem;color:#6b7280}
-.side-kpi{display:flex;justify-content:space-between;padding:5px 2px;border-bottom:1px solid #eef0f3;font-size:.88rem}.side-kpi b{font-weight:600}
-.fit{width:54px;height:54px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-     font-family:ui-monospace,monospace;font-weight:700;font-size:1.25rem;line-height:1}
-.fit small{font-size:.58rem;font-weight:500;margin-top:3px;font-family:sans-serif}
-.f-hi{background:var(--js-green-l);color:var(--js-green-ink)}.f-mid{background:var(--js-blue-l);color:var(--js-blue-ink)}.f-lo{background:#eef3f8;color:#4b6a88}.f-na{background:#eef0f3;color:#5b6474}
-.jt{font-weight:600;font-size:1.05rem;line-height:1.35}.jt a{color:inherit;text-decoration:none}.jt a:hover{color:var(--js-blue-ink)}
-.sub{color:#6b7280;font-size:.86rem;margin-top:1px}
-.tags{margin-top:4px}
-.tag{display:inline-block;font-size:.72rem;border:1px solid #dde1e8;border-radius:999px;padding:0 9px;margin:2px 0 0 4px;color:#5b6474;background:#fff}
-.t-new{background:var(--js-blue);border-color:var(--js-blue);color:var(--js-ink)}.t-kw{color:var(--js-blue-ink);border-color:var(--js-blue);background:var(--js-blue-l)}
-.t-ok{color:var(--js-green-ink);border-color:var(--js-green);background:var(--js-green-l)}.t-cv{color:var(--js-blue-ink);border-color:var(--js-blue);background:var(--js-blue-l);font-family:ui-monospace,monospace}
-details.why{margin-top:5px;font-size:.88rem;color:#374151}details.why summary{cursor:pointer;color:var(--js-blue-ink);font-size:.8rem;list-style:none}
-details.why summary::before{content:"▸ "}details.why[open] summary::before{content:"▾ "}
-.t-star{color:#9a5b00;border-color:#f0d9a8;background:#fff8e8}
-.warn{display:inline-block;margin-top:4px;font-size:.8rem;color:#9a5b00;background:#fff8e8;border:1px solid #f0d9a8;border-radius:6px;padding:1px 8px}
-.ai-h{font-weight:600;color:var(--js-blue-ink)}.ai-a{background:var(--js-blue-l);border:1px solid var(--js-blue);border-radius:10px;padding:8px 12px;margin:4px 0 10px;white-space:pre-wrap}
-</style>""", unsafe_allow_html=True)
+:focus-visible{outline:2px solid var(--js-blue) !important;outline-offset:2px}
+[data-testid="stMetric"]{background:var(--js-surface);border:1px solid var(--js-line);border-radius:10px;padding:10px 14px}
+[data-testid="stMetricValue"]{font-size:1.5rem;font-variant-numeric:tabular-nums}
+.brand{font-weight:800;font-size:1.3rem;margin:-6px 0 10px}.brand small{display:block;font-weight:400;font-size:.8rem;opacity:.7}
+.side-kpi{display:flex;justify-content:space-between;padding:5px 2px;border-bottom:1px solid rgba(148,163,184,.25);font-size:.86rem}.side-kpi b{font-weight:600;font-variant-numeric:tabular-nums}
+.fit{width:50px;height:50px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+     font-family:'IBM Plex Mono',ui-monospace,monospace;font-weight:500;font-size:1.2rem;line-height:1;font-variant-numeric:tabular-nums}
+.fit small{font-size:.62rem;font-weight:400;margin-top:3px;font-family:inherit}
+.f-hi{background:var(--js-green-l);color:var(--js-green)}.f-mid{background:var(--js-mid-l);color:var(--js-mid)}.f-lo{background:var(--js-low-l);color:var(--js-low)}.f-na{background:var(--js-na-l);color:var(--js-muted)}
+.subfit{font-size:.74rem;color:var(--js-muted);text-align:center;margin-top:4px;line-height:1.3}
+.jt{font-weight:700;font-size:1.05rem;line-height:1.35}.jt a{color:inherit;text-decoration:none}.jt a:hover{text-decoration:underline}
+.sub{color:var(--js-muted);font-size:.88rem;margin-top:1px}
+.tags{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap}
+.tag{display:inline-block;font-size:.78rem;border:1px solid var(--js-line);border-radius:999px;padding:1px 9px;color:var(--js-muted);background:transparent}
+.t-new,.t-kw{color:var(--js-blue);border-color:transparent;background:var(--js-blue-l)}
+.t-ok{color:var(--js-green);border-color:transparent;background:var(--js-green-l)}
+.t-warn,.t-star{color:var(--js-mid);border-color:transparent;background:var(--js-mid-l)}.t-no{color:var(--js-low);border-color:transparent;background:var(--js-low-l)}
+.t-cv{font-family:'IBM Plex Mono',ui-monospace,monospace}
+details.why{margin-top:6px;font-size:.9rem;color:var(--js-muted)}details.why summary{cursor:pointer;color:var(--js-blue);font-size:.86rem;font-weight:600}
+.warn{display:inline-block;margin-top:6px;font-size:.82rem;color:var(--js-mid);background:var(--js-mid-l);border-radius:6px;padding:1px 8px}
+.ai-h{font-weight:700;color:var(--js-blue)}.ai-a{background:var(--js-blue-l);border-radius:10px;padding:8px 12px;margin:4px 0 10px;white-space:pre-wrap}
+bdi{unicode-bidi:isolate}
+</style>""" % _T, unsafe_allow_html=True)
 
 
 try:  # read once in the script thread; background search threads use this copy
@@ -1012,98 +1018,113 @@ def fit_cls(fit):
     return "f-na" if fit is None else "f-hi" if fit >= 80 else "f-mid" if fit >= 60 else "f-lo"
 
 
+CARD_MENU = {"tailor": "התאם קורות חיים", "cover": "מכתב מקדים", "note": "הערה אישית", "ask": "שאל את Claude על המשרה",
+             "contact": "מצא איש קשר", "follow": "עקוב אחרי החברה", "block": "חסום את החברה", "sent_block": "שלחתי + חסום את החברה",
+             "removed_block": "הסר + חסום את החברה"}
+
+
+def _card_menu_pick(k, j, choice):
+    """26 Nov redesign: the one-shot actions that used to be 8 buttons on every card."""
+    if choice == "tailor":
+        st.session_state.tailor_job = k
+        st.switch_page(PAGES["tailor"])
+    elif choice == "contact":
+        st.session_state.outreach_job = k
+        st.switch_page(PAGES["outreach"])
+    elif choice in ("ask", "cover", "note"):
+        cur = st.session_state.get("card_panel")
+        st.session_state.card_panel = None if cur == (k, choice) else (k, choice)
+        st.rerun()
+    elif choice == "follow":
+        ck = company_key(j.get("company"))
+        if ck:
+            save_settings(lambda c: c["followed_companies"].append(ck) if ck not in c["followed_companies"] else None, f"follow {ck}")
+            st.toast(f"במעקב: {j.get('company')}")
+    elif choice in ("block", "sent_block", "removed_block"):
+        if not company_key(j.get("company")):
+            st.toast("אי אפשר לחסום משרה בלי שם חברה")
+            return
+        mark_many([k], {"block": None, "sent_block": "sent", "removed_block": "removed"}[choice], block=True)
+        st.rerun()
+
+
 def card(j, new=False):
+    """26 Nov redesign: score, title line, at most 4 chips, one line of why, 3 actions and a menu. Everything else is under "פרטים"."""
     k = j["key"]
     fit = j.get("fit")
     cv = j.get("cv") or ""
-    tags = '<span class="tag t-new">חדשה</span>' if new else ""
-    if is_gtm(j):
-        tags += '<span class="tag t-ok">GTM</span>'
     ck = company_key(j.get("company"))
-    if ck and ck in CTX["followed"]:
-        tags += '<span class="tag t-star">⭐ במעקב</span>'
-    tags += "".join(f'<span class="tag t-kw">{lbl(x)}</span>' for x in j.get("kws", []))
-    tags += "".join(f'<span class="tag">{BOARD.get(b, b)}</span>' for b in j.get("boards", []))
-    if j.get("easyApply"):
-        tags += '<span class="tag t-ok">Easy Apply</span>'
-    if cv:
-        tags += f'<span class="tag t-cv">קו״ח {"עב" if j.get("lang") == "he" else "EN"}: {E(cv.replace(".pdf", ""))}</span>'
-    # Assaf 21 Nov: verified scoring - terms + eligibility shown on the card, both reviews in the details
+    tags = ""
     if j.get("elig_status"):
         cls = {"eligible": "t-ok", "needs_verification": "t-warn", "not_eligible": "t-no"}.get(j["elig_status"], "")
         tags += f'<span class="tag {cls}">{ELIG_HE.get(j["elig_status"], j["elig_status"])}</span>'
-        tags += f'<span class="tag">{EMP_HE.get(j.get("emp"), j.get("emp"))} · {ARR_HE.get(j.get("arr"), j.get("arr"))}</span>'
-        if j.get("flag"):
-            tags += '<span class="tag t-kw">⚖️ הוכרע</span>'
+    if j.get("kws"):
+        tags += f'<span class="tag t-kw"><bdi>{E(lbl(j["kws"][0]))}</bdi></span>'
+    if new:
+        tags += '<span class="tag t-new">חדשה</span>'
+    if j.get("easyApply"):
+        tags += '<span class="tag">Easy Apply</span>'
+    if ck and ck in CTX["followed"]:
+        tags += '<span class="tag t-star">במעקב</span>'
     why = E(str(j.get("why") or (f"הדירוג נכשל: {j['scoreError']}" if j.get("scoreError") else "")))
+    # details: everything that used to crowd the card
+    det = []
     gaps = j.get("gaps") or []
-    more = ("<br>" + " · ".join(E(str(g)) for g in gaps[:3])) if gaps else ""
+    if gaps:
+        det.append("<b>פערים:</b> " + " · ".join(E(str(g)) for g in gaps[:4]))
     if j.get("pro") is not None:
         ev = j.get("evals") or {}
-        icon = {"met": "✅", "partial": "🟡", "missing": "❌", "unknown": "❔"}
-        reqs = "".join(f"<li>{icon.get(q.get('status'), '')} {E(str(q.get('requirement') or ''))} {'(חובה)' if q.get('kind') == 'must' else ''}</li>"
+        icon = {"met": "✓", "partial": "~", "missing": "✗", "unknown": "?"}
+        reqs = "".join(f"<li>{icon.get(q.get('status'), '')} {E(str(q.get('requirement') or ''))}{' (חובה)' if q.get('kind') == 'must' else ''}</li>"
                        for q in (j.get("reqs") or [])[:8])
         lt = j.get("loc_terms") or {}
-        more += (f"<br><b>מקצועי {j['pro']} · זכאות {j.get('elig')} · סופי {fit}</b>"
-                 + (" · " + " · ".join(E(str(x)) for x in (j.get("elig_notes") or [])) if j.get("elig_notes") else "")
-                 + f"<br>מותר לעבוד מ: {E(str(lt.get('allowed_work_from', '?')))} · מגבלות: {E(str(lt.get('residency_or_permit', '?')))}"
-                 + (f"<ul style='margin:4px 0'>{reqs}</ul>" if reqs else "")
-                 + f"<span class='sub'>הערכה א׳ {(ev.get('a') or {}).get('professional_match')} · הערכה ב׳ {(ev.get('b') or {}).get('professional_match', 'לא נדרשה')}"
-                 + (f" · הכרעה: {E(str(ev['tie'].get('disagreement') or ''))}" if ev.get("tie") else "") + "</span>")
+        det.append(f"<b>ציון:</b> מקצועי <bdi>{j['pro']}</bdi> · זכאות <bdi>{j.get('elig')}</bdi> · סופי <bdi>{fit}</bdi>"
+                   + (" · " + " · ".join(E(str(x)) for x in (j.get("elig_notes") or [])) if j.get("elig_notes") else ""))
+        if j.get("emp") or j.get("arr"):
+            det.append(f"<b>תנאים:</b> {EMP_HE.get(j.get('emp'), j.get('emp'))} · {ARR_HE.get(j.get('arr'), j.get('arr'))}"
+                       f" · מותר לעבוד מ: {E(str(lt.get('allowed_work_from', '?')))}")
+        if reqs:
+            det.append(f"<ul style='margin:4px 0;padding-inline-start:18px'>{reqs}</ul>")
+        det.append(f"<span class='sub'>הערכה א׳ <bdi>{(ev.get('a') or {}).get('professional_match')}</bdi> · הערכה ב׳ "
+                   f"<bdi>{(ev.get('b') or {}).get('professional_match', 'לא נדרשה')}</bdi>"
+                   + (f" · הכרעה: {E(str(ev['tie'].get('disagreement') or ''))}" if ev.get("tie") else "") + "</span>")
+    meta2 = " · ".join(BOARD.get(b, b) for b in j.get("boards", []))
+    if cv:
+        meta2 += f" · קורות חיים מומלצים: <bdi class='t-cv'>{E(cv.replace('.pdf', ''))}</bdi>"
+    det.append(f"<span class='sub'>מקור: {meta2}</span>")
+    bd = set(j.get("boards") or [])
+    if bd & {"careers", "himalayas"} and "linkedin" not in bd:  # Assaf 21 Nov: same job on LinkedIn (poster, Easy Apply, people)
+        li = "https://www.linkedin.com/jobs/search/?keywords=" + requests.utils.quote(f"{j.get('title') or ''} {j.get('company') or ''}".strip())
+        det.append(f"<a href='{E(li)}' target='_blank' rel='noopener'>חפש את המשרה בלינקדאין ↗</a>")
     with st.container(border=True):
         c0, c1, c2 = st.columns([0.35, 0.9, 10], vertical_alignment="top")
-        c0.checkbox("בחר", key=f"sel-{k}", label_visibility="collapsed")
-        c1.markdown(f'<div class="fit {fit_cls(fit)}">{fit if fit is not None else "—"}<small>התאמה</small></div>'
-                    + (f'<div class="subfit">מקצועי {j["pro"]}<br>זכאות {j.get("elig")}</div>' if j.get("pro") is not None else ""), unsafe_allow_html=True)
+        c0.checkbox(f"בחר: {j.get('title') or ''}", key=f"sel-{k}", label_visibility="collapsed")
+        c1.markdown(f'<div class="fit {fit_cls(fit)}" title="ציון התאמה">{fit if fit is not None else "—"}<small>התאמה</small></div>', unsafe_allow_html=True)
         c2.markdown(
-            f'<div class="jt"><a href="{E(str(j.get("url") or "#"))}" target="_blank" rel="noopener">{E(str(j.get("title") or ""))}</a></div>'
-            f'<div class="sub">{E(str(j.get("company") or "—"))} · {E(str(j.get("location") or "ישראל"))} · {ago(j)}</div>'
-            + (f'<div class="warn">⚠️ כבר שלחת לחברה הזאת {CTX["sent_by_co"][ck]} פעמים</div>' if ck and CTX["sent_by_co"].get(ck) else "")
-            + f'<div class="tags">{tags}</div>'
-            + (f'<details class="why"><summary>למה זה מתאים</summary>{why}{more}</details>' if why else ""),
+            f'<div class="jt"><a href="{E(str(j.get("url") or "#"))}" target="_blank" rel="noopener"><bdi>{E(str(j.get("title") or ""))}</bdi></a></div>'
+            f'<div class="sub"><bdi>{E(str(j.get("company") or "—"))}</bdi> · <bdi>{E(str(j.get("location") or "ישראל"))}</bdi> · {ago(j)}</div>'
+            + (f'<div class="warn">כבר שלחת לחברה הזאת {CTX["sent_by_co"][ck]} פעמים</div>' if ck and CTX["sent_by_co"].get(ck) else "")
+            + (f'<div class="tags">{tags}</div>' if tags else "")
+            + (f'<div class="sub" style="margin-top:6px">{why}</div>' if why else "")
+            + f'<details class="why"><summary>פרטים</summary>{"<br>".join(det)}</details>',
             unsafe_allow_html=True)
-        a1, a2, a3, a4, a5, a6, a7 = c2.columns([2, 1.2, 1.2, 1.1, 1.6, 0.9, 1.6])
-        co = j.get("company") or ""
-        if a7.button("👤 מצא איש קשר", key=f"out-{k}", width="stretch", help="מציאת איש קשר, מייל מאומת וטיוטה לאישור"):
-            st.session_state.outreach_job = k
-            st.switch_page(PAGES["outreach"])
-        with a6.popover("🚫", help="חסימת החברה", width="stretch"):
-            if not company_key(co):
-                st.caption("אי אפשר לחסום משרה בלי שם חברה")
-            else:
-                st.markdown(f"**{co}**")
-                if st.button("🚫 חסום חברה", key=f"blk-{k}", width="stretch", help="המשרות שלה ייעלמו ולא יחזרו בחיפושים"):
-                    mark_many([k], None, block=True)
-                    st.rerun()
-                if st.button("✓ שלחתי + חסום חברה", key=f"sblk-{k}", width="stretch"):
-                    mark_many([k], "sent", block=True)
-                    st.rerun()
-                if st.button("✕ הסר + חסום חברה", key=f"xblk-{k}", width="stretch"):
-                    mark_many([k], "removed", block=True)
-                    st.rerun()
-        a1.link_button("פתח והגש ↗", j.get("url") or "#", type="primary", width="stretch")
-        if a2.button("📝 התאם קו״ח", key=f"c-{k}", width="stretch", help="התאמת קורות החיים למשרה הזאת (עמוד התאמת קו״ח)"):
-            st.session_state.tailor_job = k  # Assaf 21 Nov: download + tailor live on the "התאמת קו״ח" page
-            st.switch_page(PAGES["tailor"])
-        if a3.button("✓ שלחתי", key=f"s-{k}", width="stretch"):
-            mark_many([k], "sent")
-            st.rerun()
-        if a4.button("✕ הסר", key=f"x-{k}", width="stretch"):
-            mark_many([k], "removed")
-            st.rerun()
-        open_ask = st.session_state.get("ask_open") == k
-        if a5.button("✨ שאל את Claude" if not open_ask else "סגור את Claude", key=f"ask-{k}", width="stretch"):
-            st.session_state.ask_open = None if open_ask else k
-            st.rerun()
-        g1, g2, g3, _g = c2.columns([1.6, 1.6, 1.8, 2.4])
-        bd = set(j.get("boards") or [])
-        if bd & {"careers", "himalayas"} and "linkedin" not in bd:  # Assaf 21 Nov: same job on LinkedIn (poster, Easy Apply, people)
-            g3.link_button("🔗 מצא בלינקדאין", "https://www.linkedin.com/jobs/search/?keywords=" + requests.utils.quote(f"{j.get('title') or ''} {j.get('company') or ''}".strip()),
-                           width="stretch", help="חיפוש המשרה הזאת בלינקדאין לפי הכותרת והחברה")
-        for col, kind, label in ((g1, "cover", "✍️ מכתב מקדים"), (g2, "note", "💬 הערה אישית")):
-            with col.popover(label, width="stretch"):
-                _gen_panel(j, kind)
-    if st.session_state.get("ask_open") == k:
+        with c2.container(horizontal=True, vertical_alignment="center"):
+            st.link_button("פתח והגש", j.get("url") or "#", type="primary", icon=":material/open_in_new:")
+            if st.button("שלחתי", key=f"s-{k}", icon=":material/check:"):
+                mark_many([k], "sent")
+                st.rerun()
+            if st.button("הסר", key=f"x-{k}", icon=":material/close:", type="tertiary"):
+                mark_many([k], "removed")
+                st.rerun()
+            st.space("stretch")
+            pick = st.menu_button("עוד", list(CARD_MENU), format_func=CARD_MENU.get, key=f"m-{k}", icon=":material/more_horiz:", type="tertiary")
+        if pick:
+            _card_menu_pick(k, j, pick)
+        panel = st.session_state.get("card_panel")
+        if panel and panel[0] == k and panel[1] in ("cover", "note"):
+            with c2.container(border=True):
+                _gen_panel(j, panel[1])
+    if panel and panel[0] == k and panel[1] == "ask":
         ask_panel(j)
 
 
@@ -1308,36 +1329,52 @@ def inbox_body():
             st.session_state.pop("hist", None)
             st.rerun()
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("פתוחות", len(opn))
-    m2.metric("חדשות", help="נמצאו בחיפוש האחרון", value= sum(1 for j in opn if is_new(j)))
-    m3.metric("ציון 70+", sum(1 for j in opn if (j.get("fit") or 0) >= 70))
-    m4.metric("נשלחו היום", sent_today(s))
+    # 26 Nov redesign: one summary line instead of 4 tiles; one toolbar; the rarer filters live in a "סינון" popover with active-filter chips
+    n_new, n_hi = sum(1 for j in opn if is_new(j)), sum(1 for j in opn if (j.get("fit") or 0) >= 80)
+    st.markdown(f"<div class='sub'><b>{len(opn)}</b> פתוחות · <b>{n_new}</b> חדשות · <b>{n_hi}</b> מעל 80 · נשלחו היום <b>{sent_today(s)}</b>"
+                + (f" · {len(hidden)} מוסתרות לפי עמוד הסינון" if hidden else "") + "</div>", unsafe_allow_html=True)
+    src_opts = sorted({x for j in opn for x in j.get("boards", [])})
+    src_n = {x: sum(1 for j in opn if x in j.get("boards", [])) for x in src_opts}
+    if "f_src" in st.session_state:  # a source with no open jobs left must not stay selected
+        st.session_state.f_src = [x for x in (st.session_state.f_src or []) if x in src_opts]
+    kw_opts = sorted({k for j in opn for k in j.get("kws", [])}, key=lbl)
+    n_more = sum(bool(st.session_state.get(x)) for x in ("f_kw", "f_src", "f_loc", "only_new", "only_star", "only_easy")) + (st.session_state.get("age_view", "all") != "all")
+    with st.container(horizontal=True, vertical_alignment="bottom"):
+        q = st.text_input("חיפוש חברה או תפקיד", placeholder="חיפוש חברה או תפקיד", key="f_q", label_visibility="collapsed", icon=":material/search:", width="stretch")
+        f_min = st.selectbox("ציון", [0, 60, 70, 80], format_func=lambda v: "כל הציונים" if not v else f"ציון {v}+", key="f_min", label_visibility="collapsed", width=150)
+        sort = st.selectbox("מיון", ["fit", "new", "company"], format_func={"fit": "מיון: התאמה", "new": "מיון: הכי חדש", "company": "מיון: חברה"}.get,
+                            key="sort", label_visibility="collapsed", width=160)
+        with st.popover(f"סינון ({n_more})" if n_more else "סינון", icon=":material/filter_list:"):
+            f_src = st.pills("מקור", sorted(src_opts, key=lambda x: -src_n[x]), selection_mode="multi", key="f_src",
+                             format_func=lambda x: f"{BOARD.get(x, x)} ({src_n[x]})") or []
+            f_kw = st.multiselect("מילת חיפוש", kw_opts, format_func=lbl, placeholder="כל המילים", key="f_kw")
+            f_loc = st.multiselect("מיקום", [LOC_ALL_EU, LOC_IL, LOC_REMOTE] + sorted(EU_COUNTRIES), placeholder="כל המיקומים", key="f_loc",
+                                   help="לפי המדינה שכתובה במיקום המשרה. האיחוד האירופי = כל 27 המדינות")
+            age = st.segmented_control("פורסם", list(AGE), format_func=lambda a: AGE[a], default="all", key="age_view") or "all"
+            only_new = st.toggle("רק חדשות", key="only_new")
+            only_star = st.toggle("רק חברות במעקב", key="only_star")
+            only_easy = st.toggle(f"רק Easy Apply ({sum(1 for j in opn if j.get('easyApply'))})", key="only_easy")
+        view = st.segmented_control("תצוגה", ["cards", "table"], format_func={"cards": ":material/view_agenda:", "table": ":material/table_rows:"}.get,
+                                    default="cards", key="view", label_visibility="collapsed") or "cards"
 
-    with st.container(border=True):
-        f1, f2, f4, f5 = st.columns([3, 2.2, 1.8, 2])
-        q = f1.text_input("חיפוש", placeholder="🔎 חברה או תפקיד…", key="f_q", label_visibility="collapsed")
-        kw_opts = sorted({k for j in opn for k in j.get("kws", [])}, key=lbl)
-        f_kw = f2.multiselect("מילה", kw_opts, format_func=lbl, placeholder="כל המילים", key="f_kw", label_visibility="collapsed")
-        src_opts = sorted({x for j in opn for x in j.get("boards", [])})
-        f_min = f4.selectbox("ציון", [0, 60, 70, 80], format_func=lambda v: "כל הציונים" if not v else f"ציון {v}+", key="f_min", label_visibility="collapsed")
-        f_loc = f5.multiselect("מיקום", [LOC_ALL_EU, LOC_IL, LOC_REMOTE] + sorted(EU_COUNTRIES), placeholder="כל המיקומים", key="f_loc",
-                               label_visibility="collapsed", help="לפי המדינה שכתובה במיקום המשרה. האיחוד האירופי = כל 27 המדינות")
-        # Assaf 25 Nov: sources as always-visible buttons with the number of open jobs in each
-        src_n = {x: sum(1 for j in opn if x in j.get("boards", [])) for x in src_opts}
-        if "f_src" in st.session_state:  # a source with no open jobs left must not stay selected
-            st.session_state.f_src = [x for x in (st.session_state.f_src or []) if x in src_opts]
-        f_src = st.pills("מקור (ריק = כל המקורות)", sorted(src_opts, key=lambda x: -src_n[x]), selection_mode="multi", key="f_src",
-                         format_func=lambda x: f"{BOARD.get(x, x)} ({src_n[x]})") or []
-        g1, g2, g5, g6, g3, g4 = st.columns([3, 1.2, 1.3, 1.5, 1.7, 1.9])
-        age = g1.segmented_control("פורסם", list(AGE), format_func=lambda a: AGE[a], default="all", key="age_view", label_visibility="collapsed") or "all"
-        only_new = g2.toggle("רק חדשות", key="only_new")
-        only_star = g5.toggle("⭐ במעקב", key="only_star", help="רק חברות שסימנת למעקב בעמוד \"חברות\"")
-        only_easy = g6.toggle(f"⚡ Easy Apply ({sum(1 for j in opn if j.get('easyApply'))})", key="only_easy", help="רק משרות LinkedIn עם הגשה קלה (Easy Apply)")
-        sort = g3.selectbox("מיון", ["fit", "new", "company"], format_func={"fit": "מיון: התאמה", "new": "מיון: הכי חדש", "company": "מיון: חברה"}.get,
-                            key="sort", label_visibility="collapsed")
-        view = g4.segmented_control("תצוגה", ["cards", "table"], format_func={"cards": "▦ כרטיסים", "table": "☰ טבלה"}.get, default="cards",
-                                    key="view", label_visibility="collapsed") or "cards"
+    def _clear(*keys):
+        for x in keys:
+            st.session_state.pop(x, None)
+    chips = []
+    if f_min:
+        chips.append((f"ציון {f_min}+", ("f_min",)))
+    chips += [(BOARD.get(x, x), ("f_src",)) for x in f_src]
+    chips += [(lbl(x), ("f_kw",)) for x in f_kw]
+    chips += [(x, ("f_loc",)) for x in f_loc]
+    if age != "all":
+        chips.append((f"פורסם: {AGE[age]}", ("age_view",)))
+    chips += [(t, (key_,)) for t, key_ in (("רק חדשות", "only_new"), ("במעקב", "only_star"), ("Easy Apply", "only_easy")) if st.session_state.get(key_)]
+    if chips:
+        with st.container(horizontal=True, vertical_alignment="center"):
+            for i, (t, keys_) in enumerate(chips):
+                st.button(t, key=f"chip-{i}", icon=":material/close:", on_click=_clear, args=keys_, type="secondary")
+            st.button("נקה הכל", key="chip-all", type="tertiary", on_click=_clear,
+                      args=("f_min", "f_src", "f_kw", "f_loc", "age_view", "only_new", "only_star", "only_easy", "f_q"))
 
     shown = opn
     if q.strip():
@@ -1357,8 +1394,6 @@ def inbox_body():
         shown = [j for j in shown if company_key(j.get("company")) in CTX["followed"]]
     if only_easy:
         shown = [j for j in shown if j.get("easyApply")]
-    if hidden:
-        st.caption(f"🚫 {len(hidden)} משרות פתוחות מוסתרות לפי המילים והחברות שבעמוד \"סינון\"")
     if age != "all":
         lim = lambda j: 0 if j.get("dayOnly") else 1
         shown = [j for j in shown if ((age_h(j) > 7 * 24 + lim(j)) if age == "older" else (age_h(j) <= int(age) * 24 + lim(j)))]
@@ -1366,10 +1401,17 @@ def inbox_body():
                                "new": age_h, "company": lambda j: str(j.get("company") or "")}[sort])
 
     if not shown:
-        if not opn:
-            st.info("אין משרות פתוחות 🎉  כל מה שנמצא כבר סומן. לחיפוש חדש עבור ל\"חיפוש חדש\" בתפריט.")
-        else:
-            st.info("אין משרות שמתאימות לסינון. נקה את הסינון כדי לראות את כל המשרות הפתוחות.")
+        with st.container(border=True, horizontal_alignment="center"):
+            if not opn:
+                st.markdown("**כל המשרות טופלו**")
+                st.caption("הרץ חיפוש חדש כדי למלא את התיבה.")
+                if st.button("חיפוש חדש", type="primary", icon=":material/search:", key="empty_search"):
+                    st.switch_page(PAGES["search"])
+            else:
+                st.markdown("**אין משרות שמתאימות לסינון**")
+                st.caption(f"{len(opn)} משרות פתוחות מוסתרות בגלל הסינון הנוכחי.")
+                st.button("נקה סינון", key="empty_clear", on_click=_clear,
+                          args=("f_min", "f_src", "f_kw", "f_loc", "age_view", "only_new", "only_star", "only_easy", "f_q"))
         return
 
     if view == "table":
@@ -2191,8 +2233,8 @@ def research_block(s):
             st.info("עוד אין דוח. לחץ \"צור דוח\".")
         return
     funnel, kw, src, bands = research_charts(s)
-    st.markdown(f"<div style='background:var(--js-blue-l);border-right:5px solid var(--js-blue);border-radius:10px;padding:12px 16px;font-size:1.05rem;"
-                f"font-weight:600;color:#1d3f8f;margin:6px 0 12px'>🧭 {E(str(d['headline']))}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='background:var(--js-blue-l);border-inline-start:4px solid var(--js-blue);border-radius:10px;padding:12px 16px;font-size:1.05rem;"
+                f"font-weight:600;color:var(--js-blue);margin:6px 0 12px'>🧭 {E(str(d['headline']))}</div>", unsafe_allow_html=True)
     if d["kpis"]:
         cols = st.columns(len(d["kpis"][:6]))
         for c, k in zip(cols, d["kpis"][:6]):
@@ -2338,7 +2380,7 @@ def optimization_block(s):
                     + (f", {', '.join(cfg['keep_words'])}" if [w for w in cfg["keep_words"] if w.upper() != "GTM"] else ""))
     good_rate = _pct(len(sent), len(good))
     need = int(secret("DAILY_GOAL", 50)) / max(0.01, good_rate / 100)
-    st.markdown(f"<div style='background:var(--js-blue-l);border-right:5px solid var(--js-blue);border-radius:10px;padding:10px 14px;margin:8px 0 4px;color:#1d3f8f'>"
+    st.markdown(f"<div style='background:var(--js-blue-l);border-inline-start:4px solid var(--js-blue);border-radius:10px;padding:10px 14px;margin:8px 0 4px;color:var(--js-blue)'>"
                 f"🧭 <b>הצעד הבא:</b> אתה שולח ל-{good_rate}% מהמשרות הטובות, ולכן כדי להגיע ל-{int(secret('DAILY_GOAL', 50))} הגשות ביום צריך כ-{need:.0f} "
                 f"משרות עם ציון {MIN_FIT}+ בכל יום. הדרך לשם: \"⭐ מומלצות\" פעמיים ביום, בלי ימים מדולגים.</div>", unsafe_allow_html=True)
 
