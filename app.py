@@ -1018,14 +1018,17 @@ def fit_cls(fit):
     return "f-na" if fit is None else "f-hi" if fit >= 80 else "f-mid" if fit >= 60 else "f-lo"
 
 
-CARD_MENU = {"tailor": "התאם קורות חיים", "cover": "מכתב מקדים", "note": "הערה אישית", "ask": "שאל את Claude על המשרה",
+CARD_MENU = {"force": "החזר לתיבה למרות הציון", "tailor": "התאם קורות חיים", "cover": "מכתב מקדים", "note": "הערה אישית", "ask": "שאל את Claude על המשרה",
              "contact": "מצא איש קשר", "follow": "עקוב אחרי החברה", "block": "חסום את החברה", "sent_block": "שלחתי + חסום את החברה",
              "removed_block": "הסר + חסום את החברה"}
 
 
 def _card_menu_pick(k, j, choice):
     """26 Nov redesign: the one-shot actions that used to be 8 buttons on every card."""
-    if choice == "tailor":
+    if choice == "force":
+        force_back([k])
+        st.rerun()
+    elif choice == "tailor":
         st.session_state.tailor_job = k
         st.switch_page(PAGES["tailor"])
     elif choice == "contact":
@@ -1117,7 +1120,9 @@ def card(j, new=False):
                 mark_many([k], "removed")
                 st.rerun()
             st.space("stretch")
-            pick = st.menu_button("עוד", list(CARD_MENU), format_func=CARD_MENU.get, key=f"m-{k}", icon=":material/more_horiz:", type="tertiary")
+            low = fit is not None and fit < MIN_FIT and not j.get("forced")
+            opts = [x for x in CARD_MENU if x != "force" or low]
+            pick = st.menu_button("עוד", opts, format_func=CARD_MENU.get, key=f"m-{k}", icon=":material/more_horiz:", type="tertiary")
         if pick:
             _card_menu_pick(k, j, pick)
         panel = st.session_state.get("card_panel")
@@ -1550,18 +1555,7 @@ def page_search():
                         SH["batches"][b]["closed"] = True
                     st.rerun()
 
-    # Assaf 22 Nov: ask Claude about the results of the current / last search
-    runs_all = s.get("runs", [])
-    grp = b if any((r.get("batch") or r["at"]) == b for r in runs_all) else ((runs_all[0].get("batch") or runs_all[0]["at"]) if runs_all else None)
-    if grp:
-        gruns = [r for r in runs_all if (r.get("batch") or r["at"]) == grp]
-        gkeys = list(dict.fromkeys(k for r in gruns for k in (r.get("keys") or [])))
-        if gkeys:
-            glabel = ", ".join(lbl(k) for k in dict.fromkeys(r["kw"] for r in gruns)) + " · " + to_il(min(r["at"] for r in gruns)).strftime("%d.%m %H:%M")
-            with st.expander(f"✨ שאל את התוצאות · {glabel} ({len(gkeys)} משרות)", expanded=bool(st.session_state.get("ask_search_hist", {}).get(grp))):
-                search_ask_panel(grp, gkeys, glabel, s)
-
-    prefs = prefs_panel(s)
+    # 26 Nov redesign: keywords first, conditions folded, "ask the results" at the bottom
     st.markdown("##### מילות חיפוש")
     p = st.columns(5)
     p[0].button(f"⭐ מומלצות ({len(RECOMMENDED)})", on_click=_preset, args=(RECOMMENDED,), width="stretch", type="primary",
@@ -1573,10 +1567,14 @@ def page_search():
     for i, (g, items) in enumerate(GROUPS.items()):
         if f"kwg_{i}" not in st.session_state:
             st.session_state[f"kwg_{i}"] = []
-        picked += st.pills(g, items, format_func=lbl, selection_mode="multi", key=f"kwg_{i}") or []
+        n_sel = len(st.session_state[f"kwg_{i}"])
+        with st.expander(f"{g} · {n_sel}/{len(items)}" if n_sel else f"{g} · {len(items)}", expanded=bool(n_sel)):
+            picked += st.pills(g, items, format_func=lbl, selection_mode="multi", key=f"kwg_{i}", label_visibility="collapsed") or []
     st.session_state.setdefault("kw_free", PF.default_keywords(profile()))  # default extra keywords come from the profile
     free = st.text_input("מילים נוספות (מופרדות בפסיק)", key="kw_free", placeholder="למשל: revops, מנהל CRM")
     kws = list(dict.fromkeys(picked + [w.strip().lower() for w in free.split(",") if w.strip()]))
+    with st.expander("תנאים ומקורות", icon=":material/tune:"):
+        prefs = prefs_panel(s)
 
     used = runs_today(s)
     pending = sum(1 for i in SH["batches"].values() if not i["done"] for v in i["kw"].values() if v.get("phase") not in ("done", "error"))
@@ -1590,7 +1588,7 @@ def page_search():
                     f"<span class='sub'>היום {used + pending}/{cap} חיפושים · נשארו {max(0, left)}</span>", unsafe_allow_html=True)
         over = len(kws) > left
         if over:
-            st.warning(f"בחרת {len(kws)} מילים, אבל נשארו היום רק {max(0, left)} חיפושים. הקטן את הבחירה או העלה את MAX_SEARCHES_PER_DAY ב-Secrets.")
+            st.warning(f"בחרת {len(kws)} מילים, אבל נשארו היום רק {max(0, left)} חיפושים. הקטן את הבחירה.")
         if st.button(f"🔍 חפש {len(kws)} מילים · {WINDOWS[win]}", type="primary", disabled=running or not kws or over, width="stretch"):
             if prefs != prefs_of(s):
                 save_prefs(prefs)  # the choices stay for the next visit
@@ -1599,6 +1597,18 @@ def page_search():
             st.rerun()
         if running:
             st.caption("חיפוש רץ כבר. אפשר לעבור לתיבת המשרות; משרות נכנסות לשם בכל פעם שמילה מסתיימת.")
+
+    # Assaf 22 Nov: ask Claude about the results of the current / last search
+    runs_all = s.get("runs", [])
+    grp = b if any((r.get("batch") or r["at"]) == b for r in runs_all) else ((runs_all[0].get("batch") or runs_all[0]["at"]) if runs_all else None)
+    if grp:
+        gruns = [r for r in runs_all if (r.get("batch") or r["at"]) == grp]
+        gkeys = list(dict.fromkeys(k for r in gruns for k in (r.get("keys") or [])))
+        if gkeys:
+            glabel = ", ".join(lbl(k) for k in dict.fromkeys(r["kw"] for r in gruns)) + " · " + to_il(min(r["at"] for r in gruns)).strftime("%d.%m %H:%M")
+            with st.expander(f"✨ שאל את התוצאות · {glabel} ({len(gkeys)} משרות)", expanded=bool(st.session_state.get("ask_search_hist", {}).get(grp))):
+                search_ask_panel(grp, gkeys, glabel, s)
+
 
 
 def ask_search(rows, label, question, prior):
@@ -1888,7 +1898,7 @@ def page_low():
         if a.get("status") == "auto" and j and j.get("fit") is not None and j["fit"] < MIN_FIT and a.get("reason") not in ("cyber", "excluded"):
             low.append(j)
     undo_bar()
-    st.caption(f"משרות שקיבלו ציון מתחת ל-{MIN_FIT}. עבור עליהן ידנית. ✓ שלחתי מסמן ושולח לארכיון, ו-↩ מחזיר לתיבה הראשית למרות הציון. "
+    st.caption(f"משרות שקיבלו ציון מתחת ל-{MIN_FIT}. עבור עליהן ידנית. 'שלחתי' מסמן ושולח לארכיון, ו'החזר לתיבה' (בתפריט 'עוד') מחזיר אותה למרות הציון. "
                f"משרות סייבר ומילים מסוננות לא מופיעות כאן.")
     if not low:
         st.info("אין משרות מתחת לסף.")
@@ -1917,10 +1927,7 @@ def page_low():
             st.rerun()
         return
     for j in low[:60]:
-        card(j)
-        if st.button("↩ החזר לתיבה הראשית", key=f"fb-{j['key']}"):
-            force_back([j["key"]])
-            st.rerun()
+        card(j)  # "החזר לתיבה למרות הציון" is in the card's menu
     if len(low) > 60:
         st.caption(f"מוצגות 60 הראשונות מתוך {len(low)}. צמצם בחיפוש או עבור לתצוגת הטבלה.")
 
@@ -2993,17 +3000,31 @@ def _sp_find(OUT, key, j, name, domain, O):
 
 # ---------------- app shell ----------------
 state, _ = load_state()
+def _subview(key, options, pages):
+    """26 Nov redesign (10 pages -> 6): one page, several views on a segmented control; only the chosen view runs."""
+    v = st.segmented_control(key, list(options), format_func=options.get, default=list(options)[0], key=key, label_visibility="collapsed") or list(options)[0]
+    pages[v]()
+
+
+def page_jobs():
+    _subview("jobs_view", {"open": "פתוחות", "low": "מתחת לסף", "archive": "ארכיון"}, {"open": page_inbox, "low": page_low, "archive": page_archive})
+
+
+def page_search_all():
+    _subview("search_view", {"new": "חיפוש חדש", "history": "היסטוריה"}, {"new": page_search, "history": page_history})
+
+
+def page_companies_all():
+    _subview("co_view", {"companies": "חברות", "rules": "מילים וחברות חסומות"}, {"companies": page_companies, "rules": page_filters})
+
+
 PAGES = {
-    "inbox": st.Page(page_inbox, title="משרות", icon=":material/inbox:", url_path="inbox", default=True),
-    "search": st.Page(page_search, title="חיפוש חדש", icon=":material/search:", url_path="search"),
-    "stats": st.Page(page_stats, title="סטטיסטיקה", icon=":material/insights:", url_path="stats"),  # Assaf 19 Nov: above search history
-    "tailor": st.Page(page_tailor, title="התאמת קו״ח", icon=":material/edit_document:", url_path="tailor"),
-    "low": st.Page(page_low, title="מתחת לסף", icon=":material/arrow_downward:", url_path="low"),
+    "inbox": st.Page(page_jobs, title="משרות", icon=":material/inbox:", url_path="jobs", default=True),
+    "search": st.Page(page_search_all, title="חיפוש", icon=":material/search:", url_path="search"),
+    "tailor": st.Page(page_tailor, title="קורות חיים", icon=":material/edit_document:", url_path="tailor"),
     "outreach": st.Page(page_outreach, title="פנייה ישירה", icon=":material/forward_to_inbox:", url_path="outreach"),
-    "history": st.Page(page_history, title="היסטוריית חיפושים", icon=":material/history:", url_path="history"),
-    "companies": st.Page(page_companies, title="חברות", icon=":material/apartment:", url_path="companies"),
-    "filters": st.Page(page_filters, title="סינון", icon=":material/block:", url_path="filters"),
-    "archive": st.Page(page_archive, title="ארכיון", icon=":material/inventory_2:", url_path="archive"),
+    "companies": st.Page(page_companies_all, title="חברות", icon=":material/apartment:", url_path="companies"),
+    "stats": st.Page(page_stats, title="סטטיסטיקה", icon=":material/insights:", url_path="stats"),
 }
 nav = st.navigation(list(PAGES.values()), position="sidebar")
 with st.sidebar:
@@ -3019,11 +3040,12 @@ with st.sidebar:
     _tin, _tout = _u.get("in", 0) + _p.get("in", 0), _u.get("out", 0) + _p.get("out", 0)
     usd, cap_usd = apify_usage()
     st.markdown(f"<div class='side-kpi'><span>משרות פתוחות</span><b>{open_n}</b></div>"
-                f"<div class='side-kpi'><span>חיפושים היום</span><b>{runs_today(state)}/{cap}</b></div>"
-                + f"<div class='side-kpi'><span>Claude החודש (טוקנים)</span><b>{(_tin + _tout) / 1e6:.2f}M</b></div>"
-                f"<div class='side-kpi'><span>קלט / פלט</span><b>{_tin / 1e6:.2f}M / {_tout / 1e6:.2f}M</b></div>"
-                + (f"<div class='side-kpi'><span>Apify החודש</span><b>${usd:.2f} מתוך ${cap_usd:.0f}</b></div>" if usd is not None else ""),
-                unsafe_allow_html=True)
+                f"<div class='side-kpi'><span>חיפושים היום</span><b>{runs_today(state)}/{cap}</b></div>", unsafe_allow_html=True)
+    with st.popover("שימוש החודש", icon=":material/data_usage:", width="stretch"):
+        st.markdown(f"<div class='side-kpi'><span>Claude החודש (טוקנים)</span><b>{(_tin + _tout) / 1e6:.2f}M</b></div>"
+                    f"<div class='side-kpi'><span>קלט / פלט</span><b>{_tin / 1e6:.2f}M / {_tout / 1e6:.2f}M</b></div>"
+                    + (f"<div class='side-kpi'><span>Apify החודש</span><b>${usd:.2f} מתוך ${cap_usd:.0f}</b></div>" if usd is not None else ""),
+                    unsafe_allow_html=True)
     _b, _info = active_batch()
     if _info and not _info["done"]:
         st.fragment(run_every=4)(progress_live)(compact=True)
