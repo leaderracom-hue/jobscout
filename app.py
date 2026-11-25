@@ -806,6 +806,8 @@ def mark_many(keys, status, block=False):
                     j["desc"] = str(j["desc"])[:3000]  # 26 Nov: trimmed, no longer deleted (drafts after "sent" had no job text)
                 s["archive"][key] = {"status": status, "at": now, "title": j.get("title"), "company": j.get("company"),
                                      "urls": list((j.get("links") or {"x": j.get("url")}).values())}
+                if status == "sent":  # phase 4 tracker: first follow-up reminder
+                    s["archive"][key]["follow_up"] = (dt.datetime.now(IL).date() + dt.timedelta(days=FOLLOW_UP_DAYS)).isoformat()
     what = (status or "") + ("+block" if block else "")
     update_state(m, f"{what}: {keys[0]}" if len(keys) == 1 else f"{what} x{len(keys)}")
     st.session_state.undo = {"keys": keys if status else [], "status": status, "blocked": list(newly), "noname": len(noname), "prev": dict(prev)}
@@ -1557,6 +1559,7 @@ def page_search():
 
     # 26 Nov redesign: keywords first, conditions folded, "ask the results" at the bottom
     st.markdown("##### מילות חיפוש")
+    saved_slot = st.container()
     p = st.columns(5)
     p[0].button(f"⭐ מומלצות ({len(RECOMMENDED)})", on_click=_preset, args=(RECOMMENDED,), width="stretch", type="primary",
                 help="המילים שמביאות הכי הרבה הגשות + מילים קטנות עם אחוז שליחה גבוה. כדאי להריץ פעמיים ביום")
@@ -1597,6 +1600,8 @@ def page_search():
             st.rerun()
         if running:
             st.caption("חיפוש רץ כבר. אפשר לעבור לתיבת המשרות; משרות נכנסות לשם בכל פעם שמילה מסתיימת.")
+    with saved_slot:  # drawn above the keywords, filled here once the selection is known
+        saved_searches_bar(s, kws, win)
 
     # Assaf 22 Nov: ask Claude about the results of the current / last search
     runs_all = s.get("runs", [])
@@ -2998,6 +3003,124 @@ def _sp_find(OUT, key, j, name, domain, O):
     return OUT.sp_unlock(key, fid, name)
 
 
+STAGES = {"applied": "הוגש", "replied": "נענה", "interview": "ראיון", "offer": "הצעה", "rejected": "נדחה", "dropped": "ירד מהפרק"}
+FOLLOW_UP_DAYS = 5  # first reminder this many days after "sent"
+
+
+def page_focus():
+    """26 Nov (phase 4): one open job at a time, best score first. "אחר כך" only moves it to the end of today's queue (nothing is saved)."""
+    s, _ = load_state()
+    CTX["followed"] = set(settings_of(s)["followed_companies"])
+    CTX["sent_by_co"] = {}
+    later = st.session_state.setdefault("focus_later", [])
+    q = sorted(open_jobs(s)[0], key=lambda j: (j["key"] in later, later.index(j["key"]) if j["key"] in later else 0, -(j.get("fit") or 0)))
+    total = len(q) + sent_today(s)
+    if not q:
+        with st.container(border=True, horizontal_alignment="center"):
+            st.markdown("**סיימת את כל המשרות הפתוחות**")
+            st.caption(f"{sent_today(s)} הגשות היום.")
+            if st.button("חיפוש חדש", type="primary", icon=":material/search:", key="focus_search"):
+                st.switch_page(PAGES["search"])
+        return
+    st.progress(min(1.0, sent_today(s) / max(1, total)), text=f"משרה 1 מתוך {len(q)} שנשארו · נשלחו היום {sent_today(s)}")
+    j = q[0]
+    card(j)
+    if st.button("אחר כך", icon=":material/schedule:", key="focus_later_btn", help="מעביר את המשרה לסוף התור של היום"):
+        later[:] = [x for x in later if x != j["key"]] + [j["key"]]
+        st.rerun()
+
+
+def page_tracker():
+    """26 Nov (phase 4): every job marked "sent" with its stage, a follow-up date and notes; edited in place and saved on change."""
+    s, _ = load_state()
+    today = dt.datetime.now(IL).date()
+    rows = []
+    for k, a in s["archive"].items():
+        if a.get("status") != "sent" or not a.get("at"):
+            continue
+        sent = to_il(a["at"]).date()
+        fu = a.get("follow_up") or (sent + dt.timedelta(days=FOLLOW_UP_DAYS)).isoformat()
+        rows.append({"key": k, "נשלח": sent, "תפקיד": a.get("title") or (s["jobs"].get(k) or {}).get("title") or "", "חברה": a.get("company") or "",
+                     "שלב": STAGES.get(a.get("stage") or "applied", "הוגש"), "מעקב": dt.date.fromisoformat(fu[:10]), "הערות": a.get("notes") or ""})
+    rows.sort(key=lambda r: r["נשלח"], reverse=True)
+    open_stages = {"הוגש", "נענה", "ראיון"}
+    # a reminder exists only when a follow-up date was set: on "sent" from 26 Nov on, or by hand here (older applications stay quiet)
+    due = [r for r in rows if r["שלב"] in open_stages and r["מעקב"] <= today and s["archive"][r["key"]].get("follow_up")]
+    counts = {v: sum(1 for r in rows if r["שלב"] == v) for v in STAGES.values()}
+    st.markdown(f"<div class='sub'><b>{len(rows)}</b> הגשות · " + " · ".join(f"{k} <b>{v}</b>" for k, v in counts.items() if v)
+                + (f" · <b>{len(due)}</b> מחכות למעקב היום" if due else "") + "</div>", unsafe_allow_html=True)
+    if not rows:
+        st.info("עוד אין הגשות. כל משרה שתסמן \"שלחתי\" תופיע כאן.")
+        return
+    show = st.segmented_control("הצג", ["due", "open", "all"], format_func={"due": f"מעקב היום ({len(due)})", "open": "בתהליך", "all": "הכל"}.get,
+                                default="due" if due else "open", key="trk_show", label_visibility="collapsed") or "open"
+    view = due if show == "due" else [r for r in rows if r["שלב"] in open_stages] if show == "open" else rows
+    if not view:
+        st.caption("אין כאן כלום כרגע.")
+        return
+    df = pd.DataFrame(view[:300]).set_index("key")
+    edited = st.data_editor(
+        df, key=f"trk_{show}", width="stretch", hide_index=True, height=min(38 + 35 * len(df), 640),
+        disabled=["נשלח", "תפקיד", "חברה"],
+        column_config={"שלב": st.column_config.SelectboxColumn("שלב", options=list(STAGES.values()), required=True, width="small"),
+                       "מעקב": st.column_config.DateColumn("מעקב", format="DD.MM", width="small"),
+                       "נשלח": st.column_config.DateColumn("נשלח", format="DD.MM", width="small"),
+                       "תפקיד": st.column_config.TextColumn("תפקיד", width="large"),
+                       "הערות": st.column_config.TextColumn("הערות", width="medium")})
+    changed = {}
+    inv = {v: k for k, v in STAGES.items()}
+    for k in df.index:
+        o, n = df.loc[k], edited.loc[k]
+        patch = {}
+        if n["שלב"] != o["שלב"]:
+            patch["stage"] = inv[n["שלב"]]
+        if n["מעקב"] != o["מעקב"] and pd.notna(n["מעקב"]):
+            patch["follow_up"] = pd.Timestamp(n["מעקב"]).date().isoformat()
+        if (n["הערות"] or "") != (o["הערות"] or ""):
+            patch["notes"] = str(n["הערות"] or "")[:500]
+        if patch:
+            changed[k] = patch
+    if changed:
+        def m(st_):
+            for k, patch in changed.items():
+                if k in st_["archive"]:
+                    st_["archive"][k].update(patch)
+        update_state(m, f"tracker x{len(changed)}")
+        st.toast(f"נשמר ({len(changed)})")
+    st.caption("שינוי שלב, תאריך מעקב או הערה נשמר מיד. משרה נכנסת לכאן כשמסמנים \"שלחתי\", עם תזכורת מעקב אחרי " + str(FOLLOW_UP_DAYS) + " ימים.")
+
+
+def _apply_saved(item):
+    _preset(item.get("kws") or [])
+    st.session_state.kw_free = ", ".join(x for x in item.get("kws") or [] if x not in KEYWORDS)
+    if item.get("win") in WINDOWS:
+        st.session_state.win = item["win"]
+
+
+def saved_searches_bar(s, kws, win):
+    """26 Nov (phase 4): one-click keyword sets, saved with the data (settings.saved_searches)."""
+    saved = settings_of(s).get("saved_searches") or []
+    with st.container(horizontal=True, vertical_alignment="center"):
+        for i, item in enumerate(saved[:8]):
+            st.button(f"{item['name']} · {len(item.get('kws') or [])}", key=f"ss-{i}", on_click=_apply_saved, args=(item,), icon=":material/bookmark:")
+        with st.popover("שמור בחירה", icon=":material/bookmark_add:", disabled=not kws):
+            name = st.text_input("שם", key="ss_name", placeholder="למשל: בוקר · מוצר ואוטומציות")
+            if st.button("שמור", type="primary", key="ss_save", disabled=not name.strip()):
+                item = {"name": name.strip()[:40], "kws": kws, "win": win}
+
+                def ch(c):
+                    c["saved_searches"] = [x for x in (c.get("saved_searches") or []) if x["name"] != item["name"]] + [item]
+                save_settings(ch, f"saved search {item['name']}")
+                st.toast("החיפוש נשמר")
+                st.rerun()
+            if saved:
+                drop = st.selectbox("מחק חיפוש שמור", [x["name"] for x in saved], index=None, key="ss_drop", placeholder="בחר כדי למחוק")
+                if drop and st.button("מחק", key="ss_del"):
+                    save_settings(lambda c: c.__setitem__("saved_searches", [x for x in (c.get("saved_searches") or []) if x["name"] != drop]),
+                                  f"drop saved search {drop}")
+                    st.rerun()
+
+
 # ---------------- app shell ----------------
 state, _ = load_state()
 def _subview(key, options, pages):
@@ -3007,7 +3130,8 @@ def _subview(key, options, pages):
 
 
 def page_jobs():
-    _subview("jobs_view", {"open": "פתוחות", "low": "מתחת לסף", "archive": "ארכיון"}, {"open": page_inbox, "low": page_low, "archive": page_archive})
+    _subview("jobs_view", {"open": "פתוחות", "focus": "מצב מיקוד", "low": "מתחת לסף", "archive": "ארכיון"},
+             {"open": page_inbox, "focus": page_focus, "low": page_low, "archive": page_archive})
 
 
 def page_search_all():
@@ -3021,6 +3145,7 @@ def page_companies_all():
 PAGES = {
     "inbox": st.Page(page_jobs, title="משרות", icon=":material/inbox:", url_path="jobs", default=True),
     "search": st.Page(page_search_all, title="חיפוש", icon=":material/search:", url_path="search"),
+    "tracker": st.Page(page_tracker, title="הגשות", icon=":material/view_kanban:", url_path="applications"),
     "tailor": st.Page(page_tailor, title="קורות חיים", icon=":material/edit_document:", url_path="tailor"),
     "outreach": st.Page(page_outreach, title="פנייה ישירה", icon=":material/forward_to_inbox:", url_path="outreach"),
     "companies": st.Page(page_companies_all, title="חברות", icon=":material/apartment:", url_path="companies"),

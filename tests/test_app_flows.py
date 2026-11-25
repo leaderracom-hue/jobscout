@@ -48,6 +48,7 @@ def test_sent_keeps_text_and_undo_restores_earlier_state(app):
     app["mark_many"](["a", "d"], "sent")
     s = app["box"]["s"]
     assert s["archive"]["a"]["status"] == "sent" and len(s["jobs"]["a"]["desc"]) == 3000
+    assert s["archive"]["a"]["follow_up"] > s["archive"]["a"]["at"][:10]  # reminder set on "sent"
     u = app["st"].session_state.undo
     app["restore_many"](u["keys"], u.get("blocked") or [], u.get("prev"))
     assert "a" not in s["archive"] and s["archive"]["d"] == {"status": "removed"}
@@ -84,3 +85,50 @@ page_outreach()
     assert any("SMARTLEAD_API_KEY" in c.value for c in at.caption)
     assert any("כדי להמשיך" in i.value for i in at.info), ([t.value for t in at.text_input], [c.value for c in at.caption], [e.value for e in at.error])
     assert at.button[0].disabled
+
+
+def _page_test(body):
+    from streamlit.testing.v1 import AppTest
+    script = ROOT / "_test_outreach_page_tmp.py"
+    script.write_text(HEAD + body, encoding="utf-8")
+    at = AppTest.from_file(str(script), default_timeout=60)
+    at.session_state["ok"] = True
+    try:
+        at.run()
+    finally:
+        script.unlink()
+    return at
+
+
+STATE_SRC = '''
+import copy as _c, datetime as _d
+_now = _d.datetime.now(_d.timezone.utc)
+_S = {"jobs": {"a": {"key": "a", "title": "PM A", "company": "A", "fit": 90, "boards": ["alljobs"], "location": "Tel Aviv"},
+               "b": {"key": "b", "title": "PM B", "company": "B", "fit": 70, "boards": ["alljobs"], "location": "Tel Aviv"},
+               "c": {"key": "c", "title": "PM C", "company": "C", "fit": 80, "boards": ["alljobs"], "location": "Tel Aviv"}},
+      "archive": {"c": {"status": "sent", "at": (_now - _d.timedelta(days=8)).isoformat(), "title": "PM C", "company": "C", "follow_up": (_now - _d.timedelta(days=1)).date().isoformat()}}, "runs": [],
+      "settings": {"exclude_words": [], "keep_words": [], "blocked_companies": [], "followed_companies": []}}
+load_state = lambda: (_c.deepcopy(_S), "sha")
+update_state = lambda m, msg: None
+'''
+
+
+def test_focus_mode_shows_best_open_job_first():
+    at = _page_test(STATE_SRC + "page_focus()\n")
+    assert not at.exception
+    assert any("PM A" in m.value for m in at.markdown)
+    assert not any("PM B" in m.value for m in at.markdown)
+
+
+def test_tracker_lists_sent_job_due_for_follow_up():
+    at = _page_test(STATE_SRC + "page_tracker()\n")
+    assert not at.exception
+    assert any("מחכות למעקב היום" in m.value for m in at.markdown)
+
+
+def test_saved_search_applies_keywords(app):
+    app["st"].session_state.clear()
+    app["_apply_saved"]({"name": "x", "kws": ["marketing automation", "my own words"], "win": 24})
+    ss = app["st"].session_state
+    assert any("marketing automation" in (ss.get(f"kwg_{i}") or []) for i in range(len(app["GROUPS"])))
+    assert ss["kw_free"] == "my own words" and ss["win"] == 24
