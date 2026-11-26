@@ -70,6 +70,18 @@ def is_gtm(j):
     return bool(j.get("gtm") or GTM_RX.search(str(j.get("title") or "")) or GTM_RX.search(str(j.get("desc") or "")))
 
 
+# Assaf 26 Nov: Jerusalem-area jobs are auto rejected. A list that also names another city (agencies: "תל אביב | ירושלים") stays.
+JLM_RX = re.compile("jerusalem|ירושלים|beit.?shemesh|בית.?שמש|mevaseret|מבשרת|ma.?ale.?adumim|מעלה.?אדומים|giv.?at.?ze.?ev|גבעת.?זאב", re.I)
+NOT_JLM_RX = re.compile(r"tel.?aviv|תל.?אביב|herzliya|הרצליה|ramat.?gan|רמת.?גן|petah|petach|פתח.?תקו|haifa|חיפה|ra.?anana|רעננה|netanya|נתניה|"
+                        r"rehovot|רחובות|holon|חולון|rishon|ראשון.?לציון|kfar.?saba|כפר.?סבא|hod.?hasharon|הוד.?השרון|bnei.?brak|בני.?ברק|givatayim|גבעתיים|"
+                        r"\blod\b|לוד|ramla|רמלה|be.?er.?sheva|באר.?שבע|yokneam|יקנעם|caesarea|קיסריה|airport.?city|or.?yehuda|אור.?יהודה|ness.?ziona|נס.?ציונה", re.I)
+
+
+def is_jerusalem(j):
+    where = f"{j.get('location') or ''} | {j.get('title') or ''}"
+    return bool(JLM_RX.search(where)) and not NOT_JLM_RX.search(where)
+
+
 def excluded(s, j):
     """Why a job is filtered out by the user's own rules, or None."""
     cfg = settings_of(s)
@@ -77,6 +89,8 @@ def excluded(s, j):
         return "סייבר"
     if is_medical(j):
         return "רפואה"
+    if is_jerusalem(j):
+        return "אזור ירושלים"
     ck = company_key(j.get("company"))
     if ck and ck in cfg["blocked_companies"]:
         return f"חברה חסומה: {j.get('company')}"

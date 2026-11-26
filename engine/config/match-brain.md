@@ -35,6 +35,7 @@ You read ONE job post (title, company, location, arrangement, full description) 
 - **GEO Israel + Portugal:** any arrangement is fine when the job is located in Israel or Portugal.
 - **GEO Global:** ALL of these must hold: 100% remote; no visa sponsorship, work authorisation or permit requirement he cannot meet; he does not have to be physically in a specific country; the job is not tied to one country's tax or payroll rules (W-2, PAYE, SSN). Inside the EU and Israel he can be hired directly. Outside them the post must show it hires globally, worldwide or as a contractor. Global hiring platforms are always good: Toptal, A.Team, Braintrust, Arc, Malt, Contra, Catalant.
 - A required language other than English or Hebrew is a blocker.
+- A workplace in the Jerusalem area (Jerusalem, Beit Shemesh, Mevaseret Zion, Ma'ale Adumim, Givat Ze'ev) is a hard blocker: not_eligible and Skip, whatever the arrangement. A post that also offers a site outside that area is not blocked.
 
 ## How to score (fit, 0–100)
 

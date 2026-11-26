@@ -37,6 +37,14 @@ def test_excluded_uses_user_words_and_blocked_companies():
     assert excluded(s, {"title": "GTM Intern", "company": "Y"}) is None  # GTM wins over exclude words
 
 
+def test_jerusalem_area_rejected_unless_another_city_is_listed():
+    for loc in ["ירושלים", "Jerusalem District, Israel", "Beit Shemesh, Jerusalem District, Israel", "מודיעין מכבים רעות | בית שמש | ירושלים"]:
+        assert excluded({}, {"title": "GTM PM", "company": "Y", "location": loc}) == "אזור ירושלים", loc  # GTM does not override
+    for loc in ["תל אביב יפו | ירושלים", "ירושלים , רמת גן", "Tel Aviv, Israel", "Israel", ""]:
+        assert excluded({}, {"title": "PM", "company": "Y", "location": loc}) is None, loc
+    assert excluded({}, {"title": "מנהל מוצר בירושלים", "company": "Y", "location": "Israel"})
+
+
 def test_israel_vs_abroad():
     assert not is_international({"location": "Tel Aviv, Israel", "boards": ["linkedin"]})
     assert not is_international({"location": "", "boards": ["alljobs"]})
