@@ -722,7 +722,7 @@ def search_core(kw, hours, batch, report, prefs=None):
                                  "urls": list((j.get("links") or {"x": j.get("url")}).values())}
         auto = len(blocked) + len(intl_out) + sum(1 for k, j in fresh if k not in intl_out and (scores.get(k, {}).get("fit") is not None and scores[k]["fit"] < MIN_FIT))
         autoc["n"] = auto
-        runs =[{"kw": kw, "hours": hours or None, "at": now, "batch": batch, "found": len(found), "new": len(fresh), "autoRemoved": auto,
+        runs =[{"kw": kw, "hours": hours or None, "at": now, "batch": batch, "found": len(found), "new": len(fresh) + len(blocked), "autoRemoved": auto,
                  "stats": stats, "sourceErrors": src_errors, "prefs": prefs, "keys": keys, "apifyUsd": float(spent.group(1)) if spent else None, "claudeUsd": round(usd, 3)}] + st_.get("runs", [])[:499]
         for r in runs:  # history keeps the job list for 72 hours only
             if r.get("keys") and r["at"] < cutoff:
@@ -730,7 +730,7 @@ def search_core(kw, hours, batch, report, prefs=None):
         st_["runs"] = runs
 
     update_state(mutate, f"run {kw} {hours or 'week'}h: {len(fresh)} new")
-    report("done", new=len(fresh), auto=autoc.get("n", 0), usd=round(usd, 3))
+    report("done", new=len(fresh) + len(blocked), auto=autoc.get("n", 0), usd=round(usd, 3))
 
 
 def start_batch(kws, hours, prefs=None):

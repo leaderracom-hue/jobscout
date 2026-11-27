@@ -104,7 +104,7 @@ def excluded(s, j):
 
 IL_PLACES = re.compile("israel|ישראל|tel aviv|tel-aviv|tel aviv-yafo|תל אביב|herzliya|הרצליה|ramat gan|רמת גן|petah tikva|petach tikva|פתח תקווה|"
                        "haifa|חיפה|jerusalem|ירושלים|raanana|ra'anana|רעננה|netanya|נתניה|rehovot|רחובות|holon|חולון|beer sheva|be'er sheva|באר שבע|"
-                       "yokneam|יקנעם|kfar saba|כפר סבא|hod hasharon|bnei brak|givatayim|rishon|caesarea|airport city|modiin|modi'in|ness ziona|or yehuda", re.I)
+                       "yokneam|יקנעם|kfar saba|כפר סבא|hod hasharon|bnei brak|givatayim|rishon|caesarea|airport city|modiin|modi'in|ness ziona|or yehuda|be'er ya'akov|beer yaakov|באר יעקב", re.I)
 ISRAELI_BOARDS = {"alljobs", "jobmaster", "drushim", "drushimapify"}
 EN_WORDS = {"the", "and", "with", "for", "you", "our", "will", "your", "are", "experience", "team", "work", "we", "of", "to", "in", "is"}
 OTHER_WORDS = {"und", "der", "die", "das", "mit", "für", "wir", "sie", "et", "les", "des", "une", "pour", "nous", "vous", "avec", "el", "los",

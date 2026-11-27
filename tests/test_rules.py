@@ -86,3 +86,8 @@ def test_profile_has_no_built_in_person():
     assert PF.cv_contact({}) == [] and PF.cv_languages({}) == []
     facts = PF.eligibility_facts({"city": "Warsaw", "country": "Poland", "authorized_eu": "Yes"})
     assert "Warsaw, Poland" in facts and "EU/EEA" in facts
+
+
+def test_israeli_places_with_country_code():
+    assert not is_international({"location": "Be'er Ya'akov, IL", "boards": ["linkedin"]})
+    assert is_international({"location": "Chicago, IL", "boards": ["linkedin"]})
