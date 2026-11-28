@@ -105,6 +105,15 @@ export function linkedinRow(p) {
     desc: String(p.content || "").slice(0, 6000), budget: "", engagement: "פוסט", location: "", direct: true,
     poster: { name: p.author?.name, role: p.author?.info || "", profile: String(p.author?.linkedinUrl || "").split("?")[0] } };
 }
+export function justjoinRow(x) {
+  // B2B / freelance + fully remote only: in Poland "B2B" means a contractor invoice, not employment.
+  const types = (x.employmentTypes || []).map((e) => e.type);
+  if (x.workingMode !== "remote" || !(["b2b_contract", "freelance"].includes(x.workingTime) || types.some((t) => ["b2b", "mandate_contract", "specific_task_contract"].includes(t)))) return null;
+  const s = (x.employmentTypes || []).find((e) => e.from || e.to) || {};
+  return { source: "JustJoin.it", title: x.title, company: x.company || "", url: x.url, posted: iso(x.publishedAt || x.createdAt || ""),
+    desc: strip(x.description || "").slice(0, 6000), budget: money(s.from, s.to, `${s.currency || x.salaryCurrency || ""} ${s.unit || ""}`.trim()),
+    engagement: "חוזה B2B", location: "Remote · " + (x.country || "PL"), poster: null };
+}
 export function redditRow(p) {
   const hire = /\[\s*hiring\s*\]|hiring|looking for (an? )?([\w&.-]+ ){0,3}(freelancer|developer|expert|contractor|builder)s?/i;
   if (!hire.test(p.title || "") && !/hiring/i.test(p.flairText || "")) return null;
@@ -157,14 +166,6 @@ export const SOURCES = {
         poster: prev ? { name: prev, role: "פרסם ב-Clay #share-jobs", profile: "" } : null };
     }).filter(Boolean);
   } },
-  // 28 Nov: gtm-engineer-jobs.com job pages render in the browser only; the job sitemap gives URL + date, the slug gives the title.
-  gtmjobs: { label: "GTM Engineer Jobs", kind: "Page", async run() {
-    const sm = await get("https://gtm-engineer-jobs.com/functions/jobSitemap", false);
-    return [...sm.matchAll(/<url>([\s\S]*?)<\/url>/g)].map((m) => ({ loc: m[1].match(/<loc>([^<]+)/)?.[1] || "", mod: m[1].match(/<lastmod>([^<]+)/)?.[1] || "" }))
-      .filter((u) => /\/jobs\/[^/]+$/.test(u.loc)).slice(0, 400)
-      .map((u) => ({ source: "GTM Engineer Jobs", title: u.loc.split("/jobs/")[1].replace(/-[a-z]*\d[a-z\d]*$/i, "").replace(/-/g, " "), company: "",
-        url: u.loc, posted: iso(u.mod), desc: "", budget: "", engagement: "", location: "" }));
-  } },
   // 28 Nov: PAID (Apify harvestapi, ~$0.002/post, ~$0.16/run). Off by default; the page runs it only after a per-run confirm.
   linkedin: { label: "LinkedIn Posts", kind: "Apify", async run() {
     const o = opt("linkedin", ["looking for n8n freelancer", "hiring AI automation contractor", "looking for AI agent developer freelance",
@@ -206,12 +207,12 @@ export const SOURCES = {
     }
     return [...out.values()];
   } },
-  braintrust: { label: "Braintrust", kind: "API", async run() {
-    const j = await get("https://app.usebraintrust.com/api/jobs/?page_size=200"); // one call: robots.txt disallows ?page=
-    return (j.results || []).filter((x) => x.openings_left !== 0 && !(x.deadline && new Date(x.deadline) < new Date())).map((x) => ({
-      source: "Braintrust", title: x.title, company: x.employer?.name || "", url: `https://app.usebraintrust.com/jobs/${x.id}/`, posted: iso(x.created),
-      desc: strip(x.description || x.introduction || "").slice(0, 6000), budget: money(x.budget_minimum_usd, x.budget_maximum_usd, `USD ${x.payment_type || ""}`), engagement: "חוזה / פרילנס",
-      location: (x.locations || []).map((l) => l.location).join(", ") || "Worldwide", poster: null }));
+  // 28 Nov: PAID (Apify solidcode/justjoin-it-scraper, ~$0.001/job). Polish IT board; only remote B2B/freelance rows are kept.
+  justjoin: { label: "JustJoin.it", kind: "Apify", async run() {
+    const o = opt("justjoin", ["automation", "n8n", "AI agent", "CRM"], 200);
+    const all = [];
+    for (const q of o.qs) all.push(...await apify("solidcode~justjoin-it-scraper", { keywords: q, maxItems: o.per, includeDescription: true, sortBy: "newest", workingMode: ["remote"] }));
+    return [...new Map(all.map((x) => [x.slug || x.url, x])).values()].map(justjoinRow).filter(Boolean);
   } },
   ajb: { label: "Automation Job Board", kind: "דף", async run() {
     const html = await get("https://automationjobboard.com/", false);
@@ -274,6 +275,9 @@ function selfCheck() {
   assert.ok(!redditIntentRow({ title: "I built an n8n workflow" }));
   assert.ok(redditRow({ title: "[Hiring] n8n expert for CRM sync", flairText: "Hiring" }));
   assert.ok(!redditRow({ title: "[for hire]", flairText: "For Hire" }));
+  assert.ok(justjoinRow({ title: "n8n dev", workingMode: "remote", workingTime: "full_time", employmentTypes: [{ type: "b2b", from: 100, to: 150, currency: "pln", unit: "hour" }] }).budget.startsWith("100–150"));
+  assert.ok(!justjoinRow({ title: "x", workingMode: "remote", workingTime: "full_time", employmentTypes: [{ type: "permanent" }] }));
+  assert.ok(!justjoinRow({ title: "x", workingMode: "hybrid", workingTime: "b2b_contract", employmentTypes: [] }));
   assert.ok(linkedinRow({ content: "🚀 Looking for n8n Automation Experts!\nDM me" }));
   assert.ok(linkedinRow({ content: "We're Hiring | Freelance Automation & AI Developer" }));
   assert.ok(linkedinRow({ content: "We’re Hiring | Freelance Automation & AI Developer" }));  // curly apostrophe, as LinkedIn writes it
