@@ -40,3 +40,9 @@ def test_sources_match_engine():
     assert body, "SOURCES block not found"
     for k in PJ.SOURCES:
         assert re.search(rf"\b{k}\s*[:,(]", body.group(1)), k
+
+
+def test_cost_and_tabs():
+    assert PJ.cost("li_intent", 100) == 0.2 and PJ.cost("reddit_intent", 50) == 0.12
+    assert set(PJ.PAID) <= set(PJ.SOURCES) and all(PJ.SOURCES[k][2] in ("proj", "buy") for k in PJ.SOURCES)
+    assert PJ.tab_of({"engagement": "Buy intent"}) == "buy" and PJ.tab_of({}) == "proj"
