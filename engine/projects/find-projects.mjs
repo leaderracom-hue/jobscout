@@ -121,7 +121,7 @@ export function liIntentRow(p) {
     desc: text.slice(0, 6000), budget: "", engagement: "Buy intent", location: "", direct: true,
     poster: { name: p.author?.name, role: p.author?.info || "", profile: String(p.author?.linkedinUrl || "").split("?")[0] } };
 }
-// shortcut: field names guessed from harshmaur/reddit-scraper docs with fallbacks; confirm on the first real run.
+// harshmaur fields (checked 28 Nov test run): title, body, postUrl, authorName, communityName "r/X", createdAt.
 export function redditIntentRow(p) {
   const title = p.title || p.postTitle || "", body = p.body || p.text || p.selftext || "";
   if (!title || !BUY_LINE.test(`${title} ${String(body).slice(0, 400)}`)) return null;
@@ -231,8 +231,8 @@ export const SOURCES = {
   } },
   // 28 Nov: PAID buy intent (harshmaur/reddit-scraper, $0.02 start + $0.002/post, 50 posts = ~$0.12/run). Posts only: comments would multiply the cost.
   reddit_intent: { label: "Reddit Buy Intent", kind: "Apify", async run() {
-    return (await apify("harshmaur~reddit-scraper", { searchTerms: ["looking for automation agency", "recommend n8n expert", "need help automating",
-      "AI agent agency recommendation"], searchPosts: true, searchComments: false, crawlCommentsPerPost: false, searchSort: "new", searchTime: "week",
+    return (await apify("harshmaur~reddit-scraper", { searchTerms: ['"automation agency" looking for', '"n8n" recommend expert', '"need help" automating workflow',
+      '"AI agent" agency recommend'], searchPosts: true, searchComments: false, crawlCommentsPerPost: false, searchSort: "relevance", searchTime: "week",
       maxPostsCount: 50, maxCommentsCount: 0, startUrls: [] })).map(redditIntentRow).filter(Boolean);
   } },
 };
