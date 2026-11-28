@@ -3271,9 +3271,11 @@ def _page_projects(tab):
                 continue
             n = b_.slider("כמות", 10, c["cap"], c["max"], 10, key=f"pn-{tab}-{k}", label_visibility="collapsed",
                           format=f"%d פריטים · עד ${c['unit']}/פריט" + (f" + ${c['start']} להפעלה" if c["start"] else ""))
-            q = st.text_area(f"{lab} · {c['qlabel']} (שורה לכל אחת)", "\n".join(c["queries"]), key=f"pq-{tab}-{k}", height=100)
+            q = st.text_area(f"{lab} · {c['qlabel']} (שורה לכל אחת)", "\n".join(c["queries"]), key=f"pq-{tab}-{k}", height=100,
+                             placeholder="ריק = ברירת המחדל:\n" + "\n".join(c["queries"]))
             pick.append(k)
-            opts[k] = {"max": n, "queries": [x.strip() for x in q.splitlines() if x.strip()][:10]}
+            # an emptied box (or a stale empty widget state) falls back to the defaults instead of a run with no queries
+            opts[k] = {"max": n, "queries": [x.strip() for x in q.splitlines() if x.strip()][:10] or c["queries"]}
         if tab == "proj":
             st.link_button("LinkedIn Posts: חיפוש ידני ↗", LINKEDIN_POSTS, help="אין אוטומציה על החשבון שלך. נפתח חיפוש פוסטים מהשבוע האחרון.")
             st.caption("לא נכללו: Startup.jobs (Cloudflare), JustJoin.it (robots חוסם API), WWR (משרות מלאות), EvenLeads (למנויים).")

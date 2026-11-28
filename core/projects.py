@@ -19,7 +19,9 @@ SOURCES = {
 # Apify sources (prices checked 28 Nov, FREE tier): unit $ per item, start $ per run, default and cap on items, default queries.
 PAID = {
     "linkedin": {"unit": 0.002, "start": 0, "max": 100, "cap": 300, "qlabel": "שאילתות חיפוש", "queries": [
-        "looking for n8n freelancer", "hiring AI automation contractor", "looking for AI agent developer freelance", "need make.com automation expert"]},
+        "looking for an n8n", "looking for a Make.com", "need a Zapier expert", "n8n expert needed", "recommend an n8n developer",
+        "hiring freelance automation engineer", "contract AI agent developer", "automation specialists needed", "ISO n8n consultant",
+        "help setting up HubSpot automation"]},
     "reddit": {"unit": 0.004, "start": 0, "max": 100, "cap": 300, "qlabel": "subreddits", "queries": ["forhire", "freelance_forhire", "n8n", "automation"]},
     "li_intent": {"unit": 0.002, "start": 0, "max": 100, "cap": 300, "qlabel": "שאילתות חיפוש", "queries": [
         "looking for automation agency", "can anyone recommend n8n expert", "need help automating our CRM", "looking for AI agent agency"]},
