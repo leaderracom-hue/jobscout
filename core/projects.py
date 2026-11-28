@@ -6,11 +6,10 @@ SOURCES = {
     "n8n": ("n8n Community · Jobs", True, "proj"),
     "make": ("Make Community · Hire a Pro", True, "proj"),
     "clay": ("Clay Community · #share-jobs (GTM)", True, "proj"),
-    "gtmjobs": ("GTM Engineer Jobs (בעיקר משרות מלאות)", False, "proj"),
     "hn": ("Hacker News · Who is hiring / Freelancer", True, "proj"),
     "himalayas": ("Himalayas · Contractor", True, "proj"),
-    "braintrust": ("Braintrust", True, "proj"),
     "ajb": ("Automation Job Board", True, "proj"),
+    "justjoin": ("JustJoin.it · חוזה B2B מרחוק (פולין)", False, "proj"),
     "linkedin": ("LinkedIn Posts · מגייסים", False, "proj"),
     "reddit": ("Reddit · מגייסים", False, "proj"),
     "li_intent": ("LinkedIn Buy Intent", True, "buy"),
@@ -18,6 +17,7 @@ SOURCES = {
 }
 # Apify sources (prices checked 28 Nov, FREE tier): unit $ per item, start $ per run, default and cap on items, default queries.
 PAID = {
+    "justjoin": {"unit": 0.001, "start": 0, "max": 200, "cap": 500, "qlabel": "מילות חיפוש", "queries": ["automation", "n8n", "AI agent", "CRM"]},
     "linkedin": {"unit": 0.002, "start": 0, "max": 100, "cap": 300, "qlabel": "שאילתות חיפוש", "queries": [
         "looking for an n8n", "looking for a Make.com", "need a Zapier expert", "n8n expert needed", "recommend an n8n developer",
         "hiring freelance automation engineer", "contract AI agent developer", "automation specialists needed", "ISO n8n consultant",
