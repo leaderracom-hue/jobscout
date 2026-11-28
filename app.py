@@ -3228,7 +3228,7 @@ def _page_projects():
     with st.expander("מקורות", icon=":material/tune:"):
         pick = [k for k, (lab, _) in PJ.SOURCES.items() if st.toggle(lab, value=k in on, key=f"psrc-{k}")]
         st.link_button("LinkedIn Posts: חיפוש ידני ↗", LINKEDIN_POSTS, help="אין אוטומציה על החשבון שלך. נפתח חיפוש פוסטים מהשבוע האחרון.")
-        st.caption("לא נכללו: Reddit (חסום ב-robots), Startup.jobs (Cloudflare), JustJoin.it (robots חוסם API), WWR (משרות מלאות), EvenLeads (למנויים).")
+        st.caption("Reddit דורש REDDIT_CLIENT_ID ו-REDDIT_CLIENT_SECRET ב-Secrets (app חינמי ב-reddit.com/prefs/apps). לא נכללו: Startup.jobs (Cloudflare), JustJoin.it (robots חוסם API), WWR (משרות מלאות), EvenLeads (למנויים).")
         if sorted(pick) != sorted(on) and st.button("שמור מקורות"):
             save_settings(lambda st_: st_.update(project_sources=pick), "project sources")
             st.rerun()
@@ -3237,7 +3237,8 @@ def _page_projects():
         out = os.path.join(tempfile.gettempdir(), f"proj-{uuid.uuid4().hex}.json")
         with st.spinner("מושך מהמקורות… (כ-20 שניות)"):
             r = subprocess.run(["node", str(APP / "engine/projects/find-projects.mjs"), "--sources", ",".join(pick), "--days", "30", "--out", out],
-                               capture_output=True, text=True, timeout=240)
+                               capture_output=True, text=True, timeout=240,
+                               env={**os.environ, **{n: secret(n) or "" for n in ("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET")}})
         if r.returncode != 0:
             st.error(f"המנוע נכשל: {_redact(r.stderr)[-300:]}")
             return

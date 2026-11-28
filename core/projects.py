@@ -5,6 +5,7 @@ import datetime as dt
 SOURCES = {
     "n8n": ("n8n Community · Jobs", True),
     "make": ("Make Community · Hire a Pro", True),
+    "reddit": ("Reddit · r/forhire, r/n8n ועוד (API רשמי)", True),
     "hn": ("Hacker News · Who is hiring / Freelancer", True),
     "himalayas": ("Himalayas · Contractor", True),
     "braintrust": ("Braintrust", True),

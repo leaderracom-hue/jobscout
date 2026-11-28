@@ -1,7 +1,7 @@
 /**
  * Projects & contracts finder (28 Nov): freelance / contract / B2B / LLC work open to someone in Israel. Free public feeds,
  * no keys, no Apify. Sources were probed on 28 Nov; ones that block bots, need a subscription or only list full-time jobs are left out
- * (Reddit, Startup.jobs, EvenLeads, JustJoin.it /api, WWR, Bootstrapped, RemoteAnywhere, Traction, JobQuery, Opening, EU Remote Jobs).
+ * (Startup.jobs, EvenLeads, JustJoin.it /api, WWR, Bootstrapped, RemoteAnywhere, Traction, JobQuery, Opening, EU Remote Jobs).
  * Usage: node find-projects.mjs [--sources a,b] [--days 30] [--out file.json] | node find-projects.mjs --self-check
  * Output JSON: { items: [...], log: { source: {pulled, kept, error?} }, dropped: {reason: n} }
  */
@@ -90,6 +90,28 @@ async function discourse(base, listPath, label) {
 export const SOURCES = {
   n8n: { label: "n8n Community", kind: "API", run: () => discourse("https://community.n8n.io", "/c/jobs/13.json", "n8n Community") },
   make: { label: "Make Hire Help", kind: "API", run: () => discourse("https://community.make.com", "/c/hire-a-pro/hire-help/l/latest.json", "Make Hire Help") },
+  // 28 Nov: official Reddit API, app-only OAuth (free app at reddit.com/prefs/apps). Only [Hiring] posts; the poster is the decision maker.
+  reddit: { label: "Reddit", kind: "API", async run() {
+    const id = process.env.REDDIT_CLIENT_ID, secret = process.env.REDDIT_CLIENT_SECRET;
+    if (!id || !secret) throw new Error("missing REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET");
+    const ua = "job-scout-projects/1.0";
+    const t = await fetch("https://www.reddit.com/api/v1/access_token", { method: "POST", body: "grant_type=client_credentials", signal: AbortSignal.timeout(20000),
+      headers: { Authorization: "Basic " + Buffer.from(`${id}:${secret}`).toString("base64"), "Content-Type": "application/x-www-form-urlencoded", "User-Agent": ua } });
+    if (!t.ok) throw new Error(`Reddit auth HTTP ${t.status}`);
+    const tok = (await t.json()).access_token;
+    const out = [];
+    for (const sub of ["forhire", "freelance_forhire", "n8n", "automation"]) {
+      const r = await fetch(`https://oauth.reddit.com/r/${sub}/new?limit=100&raw_json=1`, { headers: { Authorization: `Bearer ${tok}`, "User-Agent": ua }, signal: AbortSignal.timeout(20000) });
+      if (!r.ok) throw new Error(`Reddit r/${sub} HTTP ${r.status}`);
+      for (const { data: d } of (await r.json()).data.children) {
+        if (!/\[\s*hiring\s*\]|\bhiring\b|looking for (an? )?(freelancer|developer|expert|contractor)/i.test(d.title)) continue;
+        out.push({ source: "Reddit", title: d.title, company: "", url: `https://www.reddit.com${d.permalink}`, posted: iso(d.created_utc),
+          desc: String(d.selftext || "").slice(0, 6000), budget: "", engagement: "פרויקט", location: "", direct: true,
+          poster: { name: d.author, role: `פרסם ב-r/${sub}`, profile: `https://www.reddit.com/user/${d.author}` } });
+      }
+    }
+    return out;
+  } },
   hn: { label: "Hacker News", kind: "API", async run() {
     const s = (await get("https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=10")).hits.find((h) => /who is hiring/i.test(h.title));
     if (!s) return [];
