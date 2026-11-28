@@ -104,6 +104,32 @@ export function redditRow(p) {
     budget: "", engagement: "פרויקט", location: "", direct: true,
     poster: { name: p.authorName, role: `פרסם ב-r/${p.communityName}`, profile: p.authorUrl || "" } };
 }
+// Buy intent: a company asking for a vendor, agency or tool (a lead to sell to), not a job post.
+export const BUY_LINE = /\b(looking for|need(ing)?|searching for|seeking|anyone (know|recommend|used)|can anyone recommend|recommend(ations?)? for|who can help|who do you use)\b.{0,80}\b(agenc(y|ies)|consultants?|experts?|freelancers?|developers?|partners?|someone|help|tools?|solutions?|vendors?|services?)\b/i;
+const apify = async (actor, input) => {
+  const tok = process.env.APIFY_API_TOKEN;
+  if (!tok) throw new Error("missing APIFY_API_TOKEN");
+  const r = await fetch(`https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?timeout=240`, {
+    method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(260000), body: JSON.stringify(input) });
+  if (!r.ok) throw new Error(`Apify HTTP ${r.status}`);
+  return r.json();
+};
+export function liIntentRow(p) {
+  const text = String(p.content || ""), first = text.split("\n").find((l) => l.trim()) || "";
+  if (!BUY_LINE.test(text.slice(0, 400)) || NOT_HIRE.test(first)) return null;
+  return { source: "LinkedIn Buy Intent", title: first.slice(0, 140), company: "", url: p.linkedinUrl, posted: p.postedAt?.date || "",
+    desc: text.slice(0, 6000), budget: "", engagement: "Buy intent", location: "", direct: true,
+    poster: { name: p.author?.name, role: p.author?.info || "", profile: String(p.author?.linkedinUrl || "").split("?")[0] } };
+}
+// shortcut: field names guessed from harshmaur/reddit-scraper docs with fallbacks; confirm on the first real run.
+export function redditIntentRow(p) {
+  const title = p.title || p.postTitle || "", body = p.body || p.text || p.selftext || "";
+  if (!title || !BUY_LINE.test(`${title} ${String(body).slice(0, 400)}`)) return null;
+  const who = p.username || p.author || p.authorName || "", sub = p.communityName || p.subreddit || p.parsedCommunityName || "";
+  return { source: "Reddit Buy Intent", title, company: "", url: p.url || p.postUrl || p.link, posted: iso(p.createdAt || p.created_utc || p.date),
+    desc: String(body).slice(0, 6000), budget: "", engagement: "Buy intent", location: "", direct: true,
+    poster: who ? { name: who, role: sub ? `פרסם ב-r/${String(sub).replace(/^r\//, "")}` : "Reddit", profile: `https://www.reddit.com/user/${who}` } : null };
+}
 export const SOURCES = {
   n8n: { label: "n8n Community", kind: "API", run: () => discourse("https://community.n8n.io", "/c/jobs/13.json", "n8n Community") },
   make: { label: "Make Hire Help", kind: "API", run: () => discourse("https://community.make.com", "/c/hire-a-pro/hire-help/l/latest.json", "Make Hire Help") },
@@ -198,6 +224,17 @@ export const SOURCES = {
         budget: "", engagement: String(jp.employmentType), location: JSON.stringify(jp.applicantLocationRequirements || jp.jobLocation || "") , poster: null };
     }).filter(Boolean);
   } },
+  // 28 Nov: PAID buy intent (harvestapi, $0.002/post, 4 queries x 25 = up to ~$0.20/run). Off by default, per-run confirm.
+  li_intent: { label: "LinkedIn Buy Intent", kind: "Apify", async run() {
+    return (await apify("harvestapi~linkedin-post-search", { searchQueries: ["looking for automation agency", "can anyone recommend n8n expert",
+      "need help automating our CRM", "looking for AI agent agency"], maxPosts: 25, postedLimit: "week", sortBy: "date" })).map(liIntentRow).filter(Boolean);
+  } },
+  // 28 Nov: PAID buy intent (harshmaur/reddit-scraper, $0.02 start + $0.002/post, 50 posts = ~$0.12/run). Posts only: comments would multiply the cost.
+  reddit_intent: { label: "Reddit Buy Intent", kind: "Apify", async run() {
+    return (await apify("harshmaur~reddit-scraper", { searchTerms: ["looking for automation agency", "recommend n8n expert", "need help automating",
+      "AI agent agency recommendation"], searchPosts: true, searchComments: false, crawlCommentsPerPost: false, searchSort: "new", searchTime: "week",
+      maxPostsCount: 50, maxCommentsCount: 0, startUrls: [] })).map(redditIntentRow).filter(Boolean);
+  } },
 };
 export const LINKEDIN_LINK = "https://www.linkedin.com/search/results/content/?keywords=%22looking%20for%22%20(n8n%20OR%20%22AI%20agent%22%20OR%20%22automation%20expert%22)%20(freelancer%20OR%20contractor)&datePosted=%22past-week%22";
 
@@ -216,7 +253,7 @@ export function filterAll(rows) {
     if (jerusalemOnly(g.location)) { drop("אזור ירושלים"); continue; }
     const el = eligibility(loc);
     if (el.status === "block") { drop(el.reason); continue; }
-    const k1 = canonUrl(g.url), k2 = g.company ? `${norm(g.title)}|${norm(g.company)}` : ["LinkedIn Posts", "GTM Engineer Jobs"].includes(g.source) ? `t|${norm(g.title)}` : null;  // reshared LinkedIn posts
+    const k1 = canonUrl(g.url), k2 = g.company ? `${norm(g.title)}|${norm(g.company)}` : ["LinkedIn Posts", "LinkedIn Buy Intent", "GTM Engineer Jobs"].includes(g.source) ? `t|${norm(g.title)}` : null;  // reshared LinkedIn posts
     if (seen.has(k1) || (k2 && seen.has(k2))) { drop("כפילות"); continue; }
     seen.add(k1); if (k2) seen.add(k2);
     kept[g.source] = (kept[g.source] || 0) + 1;
@@ -227,6 +264,10 @@ export function filterAll(rows) {
 }
 
 function selfCheck() {
+  assert.ok(liIntentRow({ content: "Can anyone recommend an n8n expert? We need to automate our CRM" }));
+  assert.ok(!liIntentRow({ content: "5 lessons from building AI agents" }));
+  assert.ok(redditIntentRow({ title: "Looking for an automation agency for our clinic", username: "bob" }));
+  assert.ok(!redditIntentRow({ title: "I built an n8n workflow" }));
   assert.ok(redditRow({ title: "[Hiring] n8n expert for CRM sync", flairText: "Hiring" }));
   assert.ok(!redditRow({ title: "[for hire]", flairText: "For Hire" }));
   assert.ok(linkedinRow({ content: "🚀 Looking for n8n Automation Experts!\nDM me" }));
