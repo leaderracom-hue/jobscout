@@ -100,6 +100,30 @@ export function linkedinRow(p) {
 export const SOURCES = {
   n8n: { label: "n8n Community", kind: "API", run: () => discourse("https://community.n8n.io", "/c/jobs/13.json", "n8n Community") },
   make: { label: "Make Hire Help", kind: "API", run: () => discourse("https://community.make.com", "/c/hire-a-pro/hire-help/l/latest.json", "Make Hire Help") },
+  // 28 Nov: Clay community #share-jobs (Tightknit, server-rendered; robots allows /x/). Newest page only; posts are Slack messages.
+  clay: { label: "Clay Community", kind: "Page", async run() {
+    const html = await get("https://community.clay.com/x/share-jobs", false);
+    const parts = html.split('<h2 class="pr-0');
+    return parts.slice(1).map((p, i) => {
+      const a = p.match(/href="(\/x\/share-jobs\/msg_[^"#]+)">([^<]+)<\/a>/);
+      if (!a) return null;
+      const body = strip((p.split("See more")[0] || "").replace(/^[^>]*>/, ""));
+      const texts = [...parts[i].slice(-3000).matchAll(/>([^<>]+)</g)].map((m) => strip(m[1])).filter((x) => x && x !== "·");
+      const prev = texts[texts.lastIndexOf("View in Slack") - 1] || "";
+      const when = parts[i].slice(-1500).match(/datetime="([^"]+)"/)?.[1] || "";
+      return { source: "Clay Community", title: strip(a[2]), company: "", url: "https://community.clay.com" + a[1], posted: iso(when),
+        desc: body.slice(0, 6000), budget: "", engagement: "", location: "", direct: true,
+        poster: prev ? { name: prev, role: "פרסם ב-Clay #share-jobs", profile: "" } : null };
+    }).filter(Boolean);
+  } },
+  // 28 Nov: gtm-engineer-jobs.com job pages render in the browser only; the job sitemap gives URL + date, the slug gives the title.
+  gtmjobs: { label: "GTM Engineer Jobs", kind: "Page", async run() {
+    const sm = await get("https://gtm-engineer-jobs.com/functions/jobSitemap", false);
+    return [...sm.matchAll(/<url>([\s\S]*?)<\/url>/g)].map((m) => ({ loc: m[1].match(/<loc>([^<]+)/)?.[1] || "", mod: m[1].match(/<lastmod>([^<]+)/)?.[1] || "" }))
+      .filter((u) => /\/jobs\/[^/]+$/.test(u.loc)).slice(0, 400)
+      .map((u) => ({ source: "GTM Engineer Jobs", title: u.loc.split("/jobs/")[1].replace(/-[a-z]*\d[a-z\d]*$/i, "").replace(/-/g, " "), company: "",
+        url: u.loc, posted: iso(u.mod), desc: "", budget: "", engagement: "", location: "" }));
+  } },
   // 28 Nov: PAID (Apify harvestapi, ~$0.002/post, ~$0.16/run). Off by default; the page runs it only after a per-run confirm.
   linkedin: { label: "LinkedIn Posts", kind: "Apify", async run() {
     const tok = process.env.APIFY_API_TOKEN;
@@ -196,7 +220,7 @@ export function filterAll(rows) {
     if (jerusalemOnly(g.location)) { drop("אזור ירושלים"); continue; }
     const el = eligibility(loc);
     if (el.status === "block") { drop(el.reason); continue; }
-    const k1 = canonUrl(g.url), k2 = g.company ? `${norm(g.title)}|${norm(g.company)}` : g.source === "LinkedIn Posts" ? `li|${norm(g.title)}` : null;  // reshared LinkedIn posts
+    const k1 = canonUrl(g.url), k2 = g.company ? `${norm(g.title)}|${norm(g.company)}` : ["LinkedIn Posts", "GTM Engineer Jobs"].includes(g.source) ? `t|${norm(g.title)}` : null;  // reshared LinkedIn posts
     if (seen.has(k1) || (k2 && seen.has(k2))) { drop("כפילות"); continue; }
     seen.add(k1); if (k2) seen.add(k2);
     kept[g.source] = (kept[g.source] || 0) + 1;

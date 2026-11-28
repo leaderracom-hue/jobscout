@@ -7,6 +7,8 @@ SOURCES = {
     "make": ("Make Community · Hire a Pro", True),
     "reddit": ("Reddit · r/forhire, r/n8n ועוד (API רשמי)", True),
     "linkedin": ("LinkedIn Posts · Apify בתשלום (~$0.16 להרצה)", False),
+    "clay": ("Clay Community · #share-jobs (GTM)", True),
+    "gtmjobs": ("GTM Engineer Jobs (בעיקר משרות מלאות)", False),
     "hn": ("Hacker News · Who is hiring / Freelancer", True),
     "himalayas": ("Himalayas · Contractor", True),
     "braintrust": ("Braintrust", True),
