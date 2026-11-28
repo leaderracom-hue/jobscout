@@ -45,14 +45,14 @@ def rows(items):
     """Flat rows for the table and export. Field names vary by mode, so every read has a fallback; missing = 'לא נמצא'."""
     res = []
     for p in items or []:
-        pos = (p.get("currentPosition") or p.get("experience") or [{}])
+        pos = (p.get("currentPositions") or p.get("currentPosition") or p.get("experience") or [{}])  # Short mode: currentPositions (checked 28 Nov)
         pos = pos[0] if isinstance(pos, list) and pos else (pos if isinstance(pos, dict) else {})
         loc = p.get("location")
         loc = loc.get("linkedinText") if isinstance(loc, dict) else loc
         emails = p.get("emails") or []
         email = _first(p.get("email"), (emails[0].get("email") if emails and isinstance(emails[0], dict) else (emails[0] if emails else "")))
         name = _first(p.get("name"), " ".join(x for x in (p.get("firstName"), p.get("lastName")) if x))
-        res.append({"name": name or "לא נמצא", "headline": p.get("headline") or "",
+        res.append({"name": name or "לא נמצא", "headline": p.get("headline") or pos.get("title") or "",
                     "company": _first(pos.get("companyName"), p.get("companyName")) or "לא נמצא", "location": loc or "",
                     "profile": _first(p.get("linkedinUrl"), p.get("url")) or "לא נמצא", "email": email or ""})
     bad = ("=", "+", "-", "@", "\t", "\r")  # Excel formula guard, as in core/projects.rows
