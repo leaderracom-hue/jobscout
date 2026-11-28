@@ -18,10 +18,10 @@ SOURCES = {
 # Apify sources (prices checked 28 Nov, FREE tier): unit $ per item, start $ per run, default and cap on items, default queries.
 PAID = {
     "justjoin": {"unit": 0.001, "start": 0, "max": 200, "cap": 500, "qlabel": "מילות חיפוש", "queries": ["automation", "n8n", "AI agent", "CRM"]},
-    "linkedin": {"unit": 0.002, "start": 0, "max": 100, "cap": 300, "qlabel": "שאילתות חיפוש", "queries": [
-        "looking for an n8n", "looking for a Make.com", "need a Zapier expert", "n8n expert needed", "recommend an n8n developer",
-        "hiring freelance automation engineer", "contract AI agent developer", "automation specialists needed", "ISO n8n consultant",
-        "help setting up HubSpot automation"]},
+    "linkedin": {"unit": 0.002, "start": 0, "max": 100, "cap": 300, "qlabel": "שאילתות חיפוש", "queries": [  # quoted: the actor ranks exact-phrase posts first (pilot 28 Nov: 6/40 on-topic vs 0 unquoted)
+        '"looking for an n8n"', '"looking for a Make.com"', '"need a Zapier expert"', '"n8n expert needed"', '"recommend an n8n developer"',
+        '"hiring freelance automation engineer"', '"contract AI agent developer"', '"automation specialists needed"',
+        '"ISO n8n consultant"', '"help setting up HubSpot automation"']},
     "reddit": {"unit": 0.004, "start": 0, "max": 100, "cap": 300, "qlabel": "subreddits", "queries": ["forhire", "freelance_forhire", "n8n", "automation"]},
     "li_intent": {"unit": 0.002, "start": 0, "max": 100, "cap": 300, "qlabel": "שאילתות חיפוש", "queries": [
         "looking for automation agency", "can anyone recommend n8n expert", "need help automating our CRM", "looking for AI agent agency"]},
