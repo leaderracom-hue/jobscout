@@ -1,22 +1,42 @@
 """Projects & contracts page helpers (28 Nov). Pure functions, no Streamlit, so pytest can cover them."""
 import datetime as dt
 
-# key -> (label, on by default). Keys match SOURCES in engine/projects/find-projects.mjs.
+# key -> (label, on by default, tab). Keys match SOURCES in engine/projects/find-projects.mjs. tab: "proj" or "buy".
 SOURCES = {
-    "n8n": ("n8n Community · Jobs", True),
-    "make": ("Make Community · Hire a Pro", True),
-    "reddit": ("Reddit · r/forhire, r/n8n ועוד · Apify בתשלום (~$0.40 להרצה)", False),
-    "linkedin": ("LinkedIn Posts · Apify בתשלום (~$0.20 להרצה)", False),
-    "li_intent": ("LinkedIn Buy Intent · חברות שמחפשות ספק · Apify בתשלום (~$0.20)", False),
-    "reddit_intent": ("Reddit Buy Intent · חברות שמחפשות ספק · Apify בתשלום (~$0.12)", False),
-    "clay": ("Clay Community · #share-jobs (GTM)", True),
-    "gtmjobs": ("GTM Engineer Jobs (בעיקר משרות מלאות)", False),
-    "hn": ("Hacker News · Who is hiring / Freelancer", True),
-    "himalayas": ("Himalayas · Contractor", True),
-    "braintrust": ("Braintrust", True),
-    "ajb": ("Automation Job Board", True),
+    "n8n": ("n8n Community · Jobs", True, "proj"),
+    "make": ("Make Community · Hire a Pro", True, "proj"),
+    "clay": ("Clay Community · #share-jobs (GTM)", True, "proj"),
+    "gtmjobs": ("GTM Engineer Jobs (בעיקר משרות מלאות)", False, "proj"),
+    "hn": ("Hacker News · Who is hiring / Freelancer", True, "proj"),
+    "himalayas": ("Himalayas · Contractor", True, "proj"),
+    "braintrust": ("Braintrust", True, "proj"),
+    "ajb": ("Automation Job Board", True, "proj"),
+    "linkedin": ("LinkedIn Posts · מגייסים", False, "proj"),
+    "reddit": ("Reddit · מגייסים", False, "proj"),
+    "li_intent": ("LinkedIn Buy Intent", True, "buy"),
+    "reddit_intent": ("Reddit Buy Intent", True, "buy"),
 }
-PAID = {"linkedin": 0.20, "reddit": 0.40, "li_intent": 0.20, "reddit_intent": 0.12}  # Apify sources: $ per run, confirmed by a click before every run
+# Apify sources (prices checked 28 Nov, FREE tier): unit $ per item, start $ per run, default and cap on items, default queries.
+PAID = {
+    "linkedin": {"unit": 0.002, "start": 0, "max": 100, "cap": 300, "qlabel": "שאילתות חיפוש", "queries": [
+        "looking for n8n freelancer", "hiring AI automation contractor", "looking for AI agent developer freelance", "need make.com automation expert"]},
+    "reddit": {"unit": 0.004, "start": 0, "max": 100, "cap": 300, "qlabel": "subreddits", "queries": ["forhire", "freelance_forhire", "n8n", "automation"]},
+    "li_intent": {"unit": 0.002, "start": 0, "max": 100, "cap": 300, "qlabel": "שאילתות חיפוש", "queries": [
+        "looking for automation agency", "can anyone recommend n8n expert", "need help automating our CRM", "looking for AI agent agency"]},
+    "reddit_intent": {"unit": 0.002, "start": 0.02, "max": 50, "cap": 300, "qlabel": "שאילתות חיפוש", "queries": [
+        '"automation agency" looking for', '"n8n" recommend expert', '"need help" automating workflow', '"AI agent" agency recommend']},
+}
+
+
+def cost(key, n):
+    """Most a paid source can charge for n items (the engine never asks for more)."""
+    c = PAID[key]
+    return round(c["start"] + c["unit"] * n, 3)
+
+
+def tab_of(p):
+    """Which search tab a stored row belongs to."""
+    return "buy" if p.get("engagement") == "Buy intent" else "proj"
 KEEP_DAYS = 30
 COLUMNS = ["fit", "title", "company", "source", "posted", "budget", "eligibility", "poster", "poster_profile", "url", "why"]
 

@@ -2,7 +2,8 @@
  * Projects & contracts finder (28 Nov): freelance / contract / B2B / LLC work open to someone in Israel. Free public feeds,
  * no keys, no Apify. Sources were probed on 28 Nov; ones that block bots, need a subscription or only list full-time jobs are left out
  * (Startup.jobs, EvenLeads, JustJoin.it /api, WWR, Bootstrapped, RemoteAnywhere, Traction, JobQuery, Opening, EU Remote Jobs).
- * Usage: node find-projects.mjs [--sources a,b] [--days 30] [--out file.json] | node find-projects.mjs --self-check
+ * Usage: node find-projects.mjs [--sources a,b] [--days 30] [--opts opts.json] [--out file.json]
+ *   opts.json (paid sources): { key: { max: total items, queries: [...] } }; the page sets both, so the cost follows the user's pick | node find-projects.mjs --self-check
  * Output JSON: { items: [...], log: { source: {pulled, kept, error?} }, dropped: {reason: n} }
  */
 import fs from "node:fs";
@@ -10,6 +11,13 @@ import assert from "node:assert/strict";
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const DAYS = Number(arg("--days", 30));
+const OPTS = arg("--opts") ? JSON.parse(fs.readFileSync(arg("--opts"), "utf8")) : {};
+// max is the TOTAL the user pays for; split across queries (if the actor caps per run instead, we get fewer, never more).
+export function opt(key, queries, max) {
+  const o = OPTS[key] || {}, q = (o.queries || []).map((x) => String(x).trim()).filter(Boolean).slice(0, 10);
+  const qs = q.length ? q : queries, n = Math.max(1, Math.min(500, Number(o.max) || max));
+  return { qs, n, per: Math.max(1, Math.ceil(n / qs.length)) };
+}
 const CUTOFF = Date.now() - DAYS * 864e5;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
@@ -159,25 +167,17 @@ export const SOURCES = {
   } },
   // 28 Nov: PAID (Apify harvestapi, ~$0.002/post, ~$0.16/run). Off by default; the page runs it only after a per-run confirm.
   linkedin: { label: "LinkedIn Posts", kind: "Apify", async run() {
-    const tok = process.env.APIFY_API_TOKEN;
-    if (!tok) throw new Error("missing APIFY_API_TOKEN");
-    const r = await fetch("https://api.apify.com/v2/acts/harvestapi~linkedin-post-search/run-sync-get-dataset-items?timeout=240", {
-      method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(260000),
-      body: JSON.stringify({ searchQueries: ["looking for n8n freelancer", "hiring AI automation contractor", "looking for AI agent developer freelance",
-        "need make.com automation expert"], maxPosts: 25, postedLimit: "week", sortBy: "date" }) });
-    if (!r.ok) throw new Error(`Apify HTTP ${r.status}`);
-    return (await r.json()).map(linkedinRow).filter(Boolean);
+    const o = opt("linkedin", ["looking for n8n freelancer", "hiring AI automation contractor", "looking for AI agent developer freelance",
+      "need make.com automation expert"], 100);
+    return (await apify("harvestapi~linkedin-post-search", { searchQueries: o.qs, maxPosts: o.per, postedLimit: "week", sortBy: "date" }))
+      .slice(0, o.n).map(linkedinRow).filter(Boolean);
   } },
   // 28 Nov: PAID (Apify apify/reddit-scraper, ~$0.004/post, ~$0.40/run). Reddit no longer gives out API keys ("Max clients have been reached").
   // Off by default; the page runs it only after a per-run confirm. Only hiring posts; the poster is the decision maker.
   reddit: { label: "Reddit", kind: "Apify", async run() {
-    const tok = process.env.APIFY_API_TOKEN;
-    if (!tok) throw new Error("missing APIFY_API_TOKEN");
-    const r = await fetch("https://api.apify.com/v2/acts/apify~reddit-scraper/run-sync-get-dataset-items?timeout=240", {
-      method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(260000),
-      body: JSON.stringify({ scrapeMode: "posts", communityNames: ["forhire", "freelance_forhire", "n8n", "automation"], communitySort: "new", maxPostsPerCommunity: 25 }) });
-    if (!r.ok) throw new Error(`Apify HTTP ${r.status}`);
-    return (await r.json()).map(redditRow).filter(Boolean);
+    const o = opt("reddit", ["forhire", "freelance_forhire", "n8n", "automation"], 100);  // queries = subreddit names here
+    return (await apify("apify~reddit-scraper", { scrapeMode: "posts", communityNames: o.qs.map((s) => s.replace(/^\/?r\//, "")), communitySort: "new",
+      maxPostsPerCommunity: o.per })).slice(0, o.n).map(redditRow).filter(Boolean);
   } },
   hn: { label: "Hacker News", kind: "API", async run() {
     const s = (await get("https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=10")).hits.find((h) => /who is hiring/i.test(h.title));
@@ -226,14 +226,17 @@ export const SOURCES = {
   } },
   // 28 Nov: PAID buy intent (harvestapi, $0.002/post, 4 queries x 25 = up to ~$0.20/run). Off by default, per-run confirm.
   li_intent: { label: "LinkedIn Buy Intent", kind: "Apify", async run() {
-    return (await apify("harvestapi~linkedin-post-search", { searchQueries: ["looking for automation agency", "can anyone recommend n8n expert",
-      "need help automating our CRM", "looking for AI agent agency"], maxPosts: 25, postedLimit: "week", sortBy: "date" })).map(liIntentRow).filter(Boolean);
+    const o = opt("li_intent", ["looking for automation agency", "can anyone recommend n8n expert", "need help automating our CRM",
+      "looking for AI agent agency"], 100);
+    return (await apify("harvestapi~linkedin-post-search", { searchQueries: o.qs, maxPosts: o.per, postedLimit: "week", sortBy: "date" }))
+      .slice(0, o.n).map(liIntentRow).filter(Boolean);
   } },
   // 28 Nov: PAID buy intent (harshmaur/reddit-scraper, $0.02 start + $0.002/post, 50 posts = ~$0.12/run). Posts only: comments would multiply the cost.
   reddit_intent: { label: "Reddit Buy Intent", kind: "Apify", async run() {
-    return (await apify("harshmaur~reddit-scraper", { searchTerms: ['"automation agency" looking for', '"n8n" recommend expert', '"need help" automating workflow',
-      '"AI agent" agency recommend'], searchPosts: true, searchComments: false, crawlCommentsPerPost: false, searchSort: "relevance", searchTime: "week",
-      maxPostsCount: 50, maxCommentsCount: 0, startUrls: [] })).map(redditIntentRow).filter(Boolean);
+    const o = opt("reddit_intent", ['"automation agency" looking for', '"n8n" recommend expert', '"need help" automating workflow',
+      '"AI agent" agency recommend'], 50);
+    return (await apify("harshmaur~reddit-scraper", { searchTerms: o.qs, searchPosts: true, searchComments: false, crawlCommentsPerPost: false,
+      searchSort: "relevance", searchTime: "week", maxPostsCount: o.per, maxCommentsCount: 0, startUrls: [] })).slice(0, o.n).map(redditIntentRow).filter(Boolean);
   } },
 };
 export const LINKEDIN_LINK = "https://www.linkedin.com/search/results/content/?keywords=%22looking%20for%22%20(n8n%20OR%20%22AI%20agent%22%20OR%20%22automation%20expert%22)%20(freelancer%20OR%20contractor)&datePosted=%22past-week%22";
@@ -264,6 +267,7 @@ export function filterAll(rows) {
 }
 
 function selfCheck() {
+  assert.deepEqual(opt("nope", ["a", "b", "c"], 100), { qs: ["a", "b", "c"], n: 100, per: 34 });
   assert.ok(liIntentRow({ content: "Can anyone recommend an n8n expert? We need to automate our CRM" }));
   assert.ok(!liIntentRow({ content: "5 lessons from building AI agents" }));
   assert.ok(redditIntentRow({ title: "Looking for an automation agency for our clinic", username: "bob" }));
