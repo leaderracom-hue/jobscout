@@ -3232,13 +3232,16 @@ def _page_projects():
         if sorted(pick) != sorted(on) and st.button("שמור מקורות"):
             save_settings(lambda st_: st_.update(project_sources=pick), "project sources")
             st.rerun()
+    paid = [k for k in pick if k in PJ.PAID]
+    if paid and not st.checkbox(f"אשר הרצה בתשלום הפעם: {', '.join(paid)} (~${sum(PJ.PAID[k] for k in paid):.2f} ב-Apify)", key="proj_paid_ok"):
+        pick = [k for k in pick if k not in PJ.PAID]  # no confirm = this run uses the free sources only
     a, b = st.columns(2)
-    if a.button("🔄 חפש פרויקטים עכשיו (חינם)", type="primary", width="stretch", disabled=not pick):
+    if a.button("🔄 חפש פרויקטים עכשיו" + (" (כולל בתשלום)" if any(k in PJ.PAID for k in pick) else " (חינם)"), type="primary", width="stretch", disabled=not pick):
         out = os.path.join(tempfile.gettempdir(), f"proj-{uuid.uuid4().hex}.json")
         with st.spinner("מושך מהמקורות… (כ-20 שניות)"):
             r = subprocess.run(["node", str(APP / "engine/projects/find-projects.mjs"), "--sources", ",".join(pick), "--days", "30", "--out", out],
                                capture_output=True, text=True, timeout=240,
-                               env={**os.environ, **{n: secret(n) or "" for n in ("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET")}})
+                               env={**os.environ, **{n: secret(n) or "" for n in ("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "APIFY_API_TOKEN")}})
         if r.returncode != 0:
             st.error(f"המנוע נכשל: {_redact(r.stderr)[-300:]}")
             return
@@ -3247,6 +3250,7 @@ def _page_projects():
         os.remove(out)
         update_state(lambda s_: s_.update(projects=PJ.merge(s_.get("projects"), res["items"])), "projects run")
         st.session_state["proj_log"] = res["log"]
+        st.session_state.pop("proj_paid_ok", None)  # the next paid run needs a new confirm
         st.rerun()
     if st.session_state.get("proj_log"):
         st.caption(" · ".join(f"{k}: {v.get('kept', 0)}/{v.get('pulled', 0)}" + (f" ⚠ {str(v['error'])[:40]}" if v.get("error") else "")

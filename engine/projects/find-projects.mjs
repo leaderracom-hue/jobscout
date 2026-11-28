@@ -87,9 +87,30 @@ async function discourse(base, listPath, label) {
       poster: who ? { name: post?.name || u.name || who, role: "פרסם את הבקשה", profile: `${base}/u/${who}` } : null };
   });
 }
+// LinkedIn search returns mostly opinion and self-promotion: keep a post only when its first line says someone is hiring.
+export const HIRE_LINE = /#\s*hiring|\bwe(['’]| a)?re hiring\b|\bhiring:|\blooking for (an? |experienced )?([\w&.-]+ ){0,3}(experts?|developers?|freelancers?|contractors?|consultants?|builders?|engineers?)\b|\bneed (an? )?([\w&.-]+ ){0,3}(expert|developer|freelancer)\b/i;
+export const NOT_HIRE = /\b(open to work|my next (remote )?role|i['’]?m available|join our community|whatsapp community|let['’]?s connect)\b/i;
+export function linkedinRow(p) {
+  const first = String(p.content || "").split("\n").find((l) => l.trim()) || "";
+  if (!HIRE_LINE.test(first) || NOT_HIRE.test(first)) return null;
+  return { source: "LinkedIn Posts", title: first.slice(0, 140), company: "", url: p.linkedinUrl, posted: p.postedAt?.date || "",
+    desc: String(p.content || "").slice(0, 6000), budget: "", engagement: "פוסט", location: "", direct: true,
+    poster: { name: p.author?.name, role: p.author?.info || "", profile: String(p.author?.linkedinUrl || "").split("?")[0] } };
+}
 export const SOURCES = {
   n8n: { label: "n8n Community", kind: "API", run: () => discourse("https://community.n8n.io", "/c/jobs/13.json", "n8n Community") },
   make: { label: "Make Hire Help", kind: "API", run: () => discourse("https://community.make.com", "/c/hire-a-pro/hire-help/l/latest.json", "Make Hire Help") },
+  // 28 Nov: PAID (Apify harvestapi, ~$0.002/post, ~$0.16/run). Off by default; the page runs it only after a per-run confirm.
+  linkedin: { label: "LinkedIn Posts", kind: "Apify", async run() {
+    const tok = process.env.APIFY_API_TOKEN;
+    if (!tok) throw new Error("missing APIFY_API_TOKEN");
+    const r = await fetch("https://api.apify.com/v2/acts/harvestapi~linkedin-post-search/run-sync-get-dataset-items?timeout=240", {
+      method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(260000),
+      body: JSON.stringify({ searchQueries: ["looking for n8n freelancer", "hiring AI automation contractor", "looking for AI agent developer freelance",
+        "need make.com automation expert"], maxPosts: 25, postedLimit: "week", sortBy: "date" }) });
+    if (!r.ok) throw new Error(`Apify HTTP ${r.status}`);
+    return (await r.json()).map(linkedinRow).filter(Boolean);
+  } },
   // 28 Nov: official Reddit API, app-only OAuth (free app at reddit.com/prefs/apps). Only [Hiring] posts; the poster is the decision maker.
   reddit: { label: "Reddit", kind: "API", async run() {
     const id = process.env.REDDIT_CLIENT_ID, secret = process.env.REDDIT_CLIENT_SECRET;
@@ -175,7 +196,7 @@ export function filterAll(rows) {
     if (jerusalemOnly(g.location)) { drop("אזור ירושלים"); continue; }
     const el = eligibility(loc);
     if (el.status === "block") { drop(el.reason); continue; }
-    const k1 = canonUrl(g.url), k2 = g.company ? `${norm(g.title)}|${norm(g.company)}` : null;
+    const k1 = canonUrl(g.url), k2 = g.company ? `${norm(g.title)}|${norm(g.company)}` : g.source === "LinkedIn Posts" ? `li|${norm(g.title)}` : null;  // reshared LinkedIn posts
     if (seen.has(k1) || (k2 && seen.has(k2))) { drop("כפילות"); continue; }
     seen.add(k1); if (k2) seen.add(k2);
     kept[g.source] = (kept[g.source] || 0) + 1;
@@ -186,6 +207,11 @@ export function filterAll(rows) {
 }
 
 function selfCheck() {
+  assert.ok(linkedinRow({ content: "🚀 Looking for n8n Automation Experts!\nDM me" }));
+  assert.ok(linkedinRow({ content: "We're Hiring | Freelance Automation & AI Developer" }));
+  assert.ok(linkedinRow({ content: "We’re Hiring | Freelance Automation & AI Developer" }));  // curly apostrophe, as LinkedIn writes it
+  assert.ok(!linkedinRow({ content: "AI isn't firing people. It's just not hiring them." }));
+  assert.ok(!linkedinRow({ content: "I'm looking for my next remote role as an Operations Coordinator" }));
   assert.ok(relevant("Looking for an n8n expert to build a lead workflow"));
   assert.ok(relevant("Voice AI agent with Vapi for a dental clinic"));
   assert.ok(relevant("HubSpot CRM integration contractor"));
@@ -228,7 +254,7 @@ function selfCheck() {
 async function main() {
   selfCheck();
   if (process.argv.includes("--self-check")) return;
-  const pick = (arg("--sources", Object.keys(SOURCES).join(","))).split(",").filter((k) => SOURCES[k]);
+  const pick = (arg("--sources", Object.keys(SOURCES).filter((k) => SOURCES[k].kind !== "Apify").join(","))).split(",").filter((k) => SOURCES[k]);
   const rows = [], log = {};
   for (const k of pick) {
     try { const raw = await SOURCES[k].run(); rows.push(...raw); log[k] = { pulled: raw.length }; }
