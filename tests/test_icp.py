@@ -18,3 +18,14 @@ def test_rows_fallbacks_and_formula_guard():
                    "currentPosition": [{"companyName": "Acme"}], "linkedinUrl": "https://www.linkedin.com/in/dana"}, {}])
     assert r[0]["name"] == "Dana Levi" and r[0]["company"] == "Acme" and r[0]["location"] == "Tel Aviv" and r[0]["headline"] == "'=cmd"
     assert r[1]["name"] == "לא נמצא" and list(r[1]) == icp.COLUMNS
+
+
+def test_sp_body_and_rows():
+    b = icp.sp_body({"titles": "CEO, Founder", "locations": "Israel", "headcount": ["C", "D"]}, 900)
+    assert b["limit"] == 500 and b["title"] == ["CEO", "Founder"] and b["companyHeadCount"] == ["0 - 25", "100 - 250", "25 - 100"]
+    items = [{"id": "a", "fullName": "Dana", "title": "CEO", "industry": "Real Estate", "company": {"name": "X", "website": "x.co"}, "country": "Israel",
+              "emailDeliverability": 0.95},
+             {"id": "b", "fullName": "Eli", "title": "Intern", "industry": "Real Estate", "company": {}},
+             {"id": "c", "fullName": "Gil", "title": "CEO", "industry": "Software", "company": {}}]
+    r = icp.sp_rows(items, {"query": "real estate", "exclude_titles": "Intern"})
+    assert [x["name"] for x in r] == ["Dana"] and r[0]["website"] == "x.co" and r[0]["sp_id"] == "a" and r[0]["source"] == "SmartProspect"

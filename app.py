@@ -3386,14 +3386,40 @@ def page_icp():
              "exclude_titles": b.text_input("להחריג תפקידים", saved.get("exclude_titles", "Intern, Student"), key="icp-ex"),
              "headcount": a.multiselect("גודל חברה", list(ICP.HEADCOUNT), saved.get("headcount", ["C", "D"]), format_func=ICP.HEADCOUNT.get, key="icp-hc"),
              "seniority": b.multiselect("בכירות", list(ICP.SENIORITY), saved.get("seniority", []), format_func=ICP.SENIORITY.get, key="icp-sen")}
-        n = st.slider("כמה אנשים", 25, 500, 100, 25, key="icp-n", format="%d · כל 25 = עמוד חיפוש $0.10")
-        mode = st.radio("עומק", list(ICP.MODES), horizontal=True, key="icp-mode",
-                        format_func=lambda m: {"Short": "פרופיל קצר", "Full": "פרופיל מלא (+$0.004)", "Full + email search": "מלא + אימייל (+$0.01)"}[m])
+        src = st.radio("מקור", ["sp", "apify"], horizontal=True, key="icp-src",
+                       format_func={"sp": "SmartProspect · חינם (אימייל מוסתר עד פתיחה)", "apify": "LinkedIn דרך Apify · בתשלום"}.get)
+        if src == "sp":
+            n = st.slider("כמה אנשים", 25, 500, 100, 25, key="icp-n-sp", format="%d · חיפוש חינם")
+            st.caption("מילות מפתח / תעשייה ותפקידים להחריג מסוננים אחרי החיפוש, כי ב-SmartProspect אין פילטר תעשייה שעובד. "
+                       "גודל חברה מתורגם לטווחים הקרובים של SmartProspect. פתיחת אימייל = קרדיט אחד, רק בלחיצה על אדם.")
+            mode = "Short"
+        else:
+            n = st.slider("כמה אנשים", 25, 500, 100, 25, key="icp-n", format="%d · כל 25 = עמוד חיפוש $0.10")
+            mode = st.radio("עומק", list(ICP.MODES), horizontal=True, key="icp-mode",
+                            format_func=lambda m: {"Short": "פרופיל קצר", "Full": "פרופיל מלא (+$0.004)", "Full + email search": "מלא + אימייל (+$0.01)"}[m])
         if f != {k: saved.get(k) for k in f} and st.button("שמור ICP", key="icp-save"):
             save_settings(lambda st_: st_.update(icp=f), "icp")
             st.rerun()
+    found = None
+    if src == "sp":
+        sp_key = secret("SMARTLEAD_API_KEY")
+        if not sp_key:
+            st.warning("חסר SMARTLEAD_API_KEY ב-Secrets.")
+        elif st.button("🔎 חפש אנשים ב-SmartProspect (חינם)", type="primary", width="stretch", key="icp-run-sp"):
+            with st.spinner("מחפש ב-SmartProspect…"):
+                try:
+                    r = requests.post(ICP.SP_URL, params={"api_key": sp_key}, json=ICP.sp_body(f, n), headers=ICP.SP_HEADERS, timeout=60)
+                    r.raise_for_status()
+                    d = r.json()
+                    d = d.get("data") if isinstance(d.get("data"), dict) else d
+                    found = ICP.sp_rows(d.get("list") or [], f)
+                    st.session_state["icp_sp_total"] = d.get("total_count")
+                except Exception as e:
+                    st.error(f"החיפוש נכשל: {_redact(e)[:200]}")
+        if st.session_state.get("icp_sp_total"):
+            st.caption(f"SmartProspect: {st.session_state['icp_sp_total']:,} אנשים מתאימים במאגר (לפני סינון תעשייה)")
     usd = ICP.cost(n, mode)
-    ok = cost_row(usd, None)
+    ok = cost_row(usd, None) if src == "apify" else False
     if ok and st.checkbox(f"אשר הרצה בתשלום הפעם: עד ${usd:.2f} ב-Apify", key="icp_paid_ok") and \
             st.button(f"🔎 חפש אנשים (עד ${usd:.2f})", type="primary", width="stretch", key="icp-run"):
         with st.spinner("מחפש ב-LinkedIn… (עד 4 דקות)"):
@@ -3405,18 +3431,19 @@ def page_icp():
             except Exception as e:
                 st.error(f"החיפוש נכשל: {_redact(e)[:200]}")
                 found = None
-        if found is not None:
-            def m(s_):
-                ppl = s_.setdefault("icp_people", {})
-                for x in found:
-                    ppl[x["profile"]] = {**ppl.get(x["profile"], {}), **x, "found": dt.datetime.now(dt.timezone.utc).isoformat()}
-                if len(ppl) > 2000:  # keep the state file small: newest 2,000
-                    for k in sorted(ppl, key=lambda k: ppl[k].get("found", ""))[:len(ppl) - 2000]:
-                        del ppl[k]
-            update_state(m, "icp run")
-            st.session_state.pop("icp_paid_ok", None)
-            st.success(f"נמצאו {len(found)} אנשים")
-            st.rerun()
+    if found is not None:
+        def m(s_):
+            ppl = s_.setdefault("icp_people", {})
+            for x in found:
+                pk = "sp:" + x["sp_id"] if x.get("sp_id") else x["profile"]
+                ppl[pk] = {**ppl.get(pk, {}), **x, "found": dt.datetime.now(dt.timezone.utc).isoformat()}
+            if len(ppl) > 2000:  # keep the state file small: newest 2,000
+                for k in sorted(ppl, key=lambda k: ppl[k].get("found", ""))[:len(ppl) - 2000]:
+                    del ppl[k]
+        update_state(m, "icp run")
+        st.session_state.pop("icp_paid_ok", None)
+        st.success(f"נמצאו {len(found)} אנשים")
+        st.rerun()
     people = sorted((s.get("icp_people") or {}).values(), key=lambda x: x.get("found", ""), reverse=True)
     if not people:
         st.info("עדיין אין תוצאות. הגדר ICP, אשר והרץ.")
@@ -3429,6 +3456,96 @@ def page_icp():
     e2.download_button("⬇ Excel", buf.getvalue(), "icp-people.xlsx", width="stretch", key="icp-xls")
     st.caption(f"{len(people)} אנשים שמורים")
     st.dataframe(df, hide_index=True, width="stretch", column_config={"profile": st.column_config.LinkColumn("פרופיל")})
+    sp_people = [x for x in people if x.get("sp_id")]
+    if sp_people:
+        with st.expander(f"📧 פתיחת אימייל לאנשים מ-SmartProspect ({len(sp_people)})", icon=":material/mail:"):
+            st.caption("פתיחה בתשלום (קרדיט אחד), רק כשהחיפוש מצטמצם לאדם אחד בדיוק. האימייל מופיע 20–40 שניות אחרי הפתיחה.")
+            pick = st.selectbox("אדם", range(len(sp_people[:200])), key="icp-sp-pick",
+                                format_func=lambda i: f"{sp_people[i]['name']} · {sp_people[i]['headline']} · {sp_people[i]['company']}")
+            x = sp_people[pick]
+            outreach_panel(s, "icp:" + x["sp_id"], {"company": x["company"], "title": x["headline"], "poster": x["name"],
+                                                    "url": "https://" + x["website"] if x.get("website") else "", "key": "icp:" + x["sp_id"]})
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _bdr_data(hr_key, sl_key):
+    from core import bdr
+    hc = [bdr.card(c) for c in bdr.hr_campaigns(hr_key)] if hr_key else []
+    stats = bdr.hr_stats(hr_key, [c["id"] for c in hc]) if hc else {}
+    return hc, stats, (bdr.sl_campaigns(sl_key) if sl_key else [])
+
+
+def page_bdr():
+    """Assaf 28 Nov: the LinkedIn BDR campaigns (HeyReach + Smartlead) in one place. Pause/resume only; starting stays in HeyReach / Smartlead."""
+    from core import bdr
+    hr_key, sl_key = secret("HEYREACH_MCP_KEY"), secret("SMARTLEAD_API_KEY")
+    if not hr_key and not sl_key:
+        st.info("חסרים מפתחות: הוסף HEYREACH_MCP_KEY ו-SMARTLEAD_API_KEY ל-Streamlit secrets.")
+        return
+    top = st.columns([4, 1])
+    top[0].caption("נתונים מתרעננים כל 5 דקות. הפעלת קמפיין נשארת ב-HeyReach / Smartlead.")
+    if top[1].button("🔄 רענן", key="bdr-refresh", width="stretch"):
+        _bdr_data.clear()
+        st.rerun()
+    try:
+        hc, stats, slc = _bdr_data(hr_key, sl_key)
+    except Exception as e:
+        st.error(f"הטעינה נכשלה: {_redact(e)[:200]}")
+        return
+
+    def campaigns():
+        if stats:
+            m = st.columns(4)
+            for col, (k, label) in zip(m, (("connectionsSent", "הזמנות נשלחו"), ("connectionsAccepted", "אישרו"),
+                                            ("messagesSent", "הודעות נשלחו"), ("totalMessageReplies", "תשובות"))):
+                col.metric(label, int(stats.get(k) or 0))
+        cards = [("hr", c) for c in hc] + [("sl", c) for c in slc]
+        if not cards:
+            st.info("אין קמפיינים ששמם מתחיל ב-BDR.")
+        for i in range(0, len(cards), 3):
+            for col, (kind, c) in zip(st.columns(3), cards[i:i + 3]):
+                with col.container(border=True):
+                    st.markdown(f"**{'HeyReach' if kind == 'hr' else 'Smartlead'} {c['id']}**  \n{c['name']}")
+                    if kind == "hr":
+                        st.markdown(f"● {c['status_he']} · {c['leads']} לידים  \nבתהליך {c['in_progress']} · הסתיימו {c['finished']} · נכשלו {c['failed']}")
+                        act = "pause_campaign" if c["can_pause"] else "resume_campaign" if c["can_resume"] else None
+                        if act and st.button("⏸ השהה" if c["can_pause"] else "▶ המשך", key=f"bdr-{act}-{c['id']}", width="stretch"):
+                            try:
+                                bdr.hr(hr_key, act, {"campaignId": c["id"]})
+                                _bdr_data.clear()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"נכשל: {_redact(e)[:200]}")
+                    else:
+                        st.markdown(f"● {bdr.STATUS_HE.get(c['status'], c['status'])} · {c['leads']} לידים  \n"
+                                    f"נשלחו {c['sent_count']} · נפתחו {c['open_count']} · ענו {c['reply_count']} · חזרו {c['bounce_count']}")
+                        st.caption("קריאה בלבד")
+
+    def leads():
+        lists = {f"{c['name']} ({c['leads']})": c["list_id"] for c in hc if c.get("list_id")}
+        if not lists:
+            st.info("אין רשימות לידים ב-HeyReach.")
+            return
+        pick = st.selectbox("קמפיין", list(lists), key="bdr-list")
+        rows = st.cache_data(ttl=600, show_spinner="טוען לידים…")(bdr.list_leads)(hr_key, lists[pick])
+        q = st.text_input("חיפוש בשם / חברה / נוסח", key="bdr-q")
+        if q:
+            rows = [r for r in rows if q.lower() in " ".join(r.values()).lower()]
+        st.caption(f"{len(rows)} לידים")
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", column_config={"profile": st.column_config.LinkColumn("פרופיל")})
+
+    def replies():
+        if not hc:
+            st.info("אין קמפיינים ב-HeyReach.")
+            return
+        rows = st.cache_data(ttl=300, show_spinner="טוען שיחות…")(bdr.replies)(hr_key, [c["id"] for c in hc])
+        if not rows:
+            st.info("עדיין אין שיחות מהקמפיינים. תשובות במייל מופיעות בכרטיס Smartlead.")
+            return
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", column_config={"profile": st.column_config.LinkColumn("פרופיל")})
+
+    _subview("bdr_view", {"camps": "קמפיינים", "leads": "לידים והנוסח", "replies": "תשובות"},
+             {"camps": campaigns, "leads": leads, "replies": replies})
 
 
 PAGES = {
@@ -3439,6 +3556,7 @@ PAGES = {
     "outreach": st.Page(page_outreach, title="פנייה ישירה", icon=":material/forward_to_inbox:", url_path="outreach"),
     "companies": st.Page(page_companies_all, title="חברות", icon=":material/apartment:", url_path="companies"),
     "stats": st.Page(page_stats, title="סטטיסטיקה", icon=":material/insights:", url_path="stats"),
+    "bdr": st.Page(page_bdr, title="LinkedIn BDR", icon=":material/handshake:", url_path="bdr"),
 }
 nav = st.navigation(list(PAGES.values()), position="sidebar")
 with st.sidebar:
