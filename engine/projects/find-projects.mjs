@@ -97,6 +97,13 @@ export function linkedinRow(p) {
     desc: String(p.content || "").slice(0, 6000), budget: "", engagement: "פוסט", location: "", direct: true,
     poster: { name: p.author?.name, role: p.author?.info || "", profile: String(p.author?.linkedinUrl || "").split("?")[0] } };
 }
+export function redditRow(p) {
+  const hire = /\[\s*hiring\s*\]|hiring|looking for (an? )?([\w&.-]+ ){0,3}(freelancer|developer|expert|contractor|builder)s?/i;
+  if (!hire.test(p.title || "") && !/hiring/i.test(p.flairText || "")) return null;
+  return { source: "Reddit", title: p.title, company: "", url: p.url, posted: iso(p.createdAt), desc: String(p.body || "").slice(0, 6000),
+    budget: "", engagement: "פרויקט", location: "", direct: true,
+    poster: { name: p.authorName, role: `פרסם ב-r/${p.communityName}`, profile: p.authorUrl || "" } };
+}
 export const SOURCES = {
   n8n: { label: "n8n Community", kind: "API", run: () => discourse("https://community.n8n.io", "/c/jobs/13.json", "n8n Community") },
   make: { label: "Make Hire Help", kind: "API", run: () => discourse("https://community.make.com", "/c/hire-a-pro/hire-help/l/latest.json", "Make Hire Help") },
@@ -135,27 +142,16 @@ export const SOURCES = {
     if (!r.ok) throw new Error(`Apify HTTP ${r.status}`);
     return (await r.json()).map(linkedinRow).filter(Boolean);
   } },
-  // 28 Nov: official Reddit API, app-only OAuth (free app at reddit.com/prefs/apps). Only [Hiring] posts; the poster is the decision maker.
-  reddit: { label: "Reddit", kind: "API", async run() {
-    const id = process.env.REDDIT_CLIENT_ID, secret = process.env.REDDIT_CLIENT_SECRET;
-    if (!id || !secret) throw new Error("missing REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET");
-    const ua = "job-scout-projects/1.0";
-    const t = await fetch("https://www.reddit.com/api/v1/access_token", { method: "POST", body: "grant_type=client_credentials", signal: AbortSignal.timeout(20000),
-      headers: { Authorization: "Basic " + Buffer.from(`${id}:${secret}`).toString("base64"), "Content-Type": "application/x-www-form-urlencoded", "User-Agent": ua } });
-    if (!t.ok) throw new Error(`Reddit auth HTTP ${t.status}`);
-    const tok = (await t.json()).access_token;
-    const out = [];
-    for (const sub of ["forhire", "freelance_forhire", "n8n", "automation"]) {
-      const r = await fetch(`https://oauth.reddit.com/r/${sub}/new?limit=100&raw_json=1`, { headers: { Authorization: `Bearer ${tok}`, "User-Agent": ua }, signal: AbortSignal.timeout(20000) });
-      if (!r.ok) throw new Error(`Reddit r/${sub} HTTP ${r.status}`);
-      for (const { data: d } of (await r.json()).data.children) {
-        if (!/\[\s*hiring\s*\]|\bhiring\b|looking for (an? )?(freelancer|developer|expert|contractor)/i.test(d.title)) continue;
-        out.push({ source: "Reddit", title: d.title, company: "", url: `https://www.reddit.com${d.permalink}`, posted: iso(d.created_utc),
-          desc: String(d.selftext || "").slice(0, 6000), budget: "", engagement: "פרויקט", location: "", direct: true,
-          poster: { name: d.author, role: `פרסם ב-r/${sub}`, profile: `https://www.reddit.com/user/${d.author}` } });
-      }
-    }
-    return out;
+  // 28 Nov: PAID (Apify apify/reddit-scraper, ~$0.004/post, ~$0.40/run). Reddit no longer gives out API keys ("Max clients have been reached").
+  // Off by default; the page runs it only after a per-run confirm. Only hiring posts; the poster is the decision maker.
+  reddit: { label: "Reddit", kind: "Apify", async run() {
+    const tok = process.env.APIFY_API_TOKEN;
+    if (!tok) throw new Error("missing APIFY_API_TOKEN");
+    const r = await fetch("https://api.apify.com/v2/acts/apify~reddit-scraper/run-sync-get-dataset-items?timeout=240", {
+      method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(260000),
+      body: JSON.stringify({ scrapeMode: "posts", communityNames: ["forhire", "freelance_forhire", "n8n", "automation"], communitySort: "new", maxPostsPerCommunity: 25 }) });
+    if (!r.ok) throw new Error(`Apify HTTP ${r.status}`);
+    return (await r.json()).map(redditRow).filter(Boolean);
   } },
   hn: { label: "Hacker News", kind: "API", async run() {
     const s = (await get("https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=10")).hits.find((h) => /who is hiring/i.test(h.title));
@@ -231,6 +227,8 @@ export function filterAll(rows) {
 }
 
 function selfCheck() {
+  assert.ok(redditRow({ title: "[Hiring] n8n expert for CRM sync", flairText: "Hiring" }));
+  assert.ok(!redditRow({ title: "[for hire]", flairText: "For Hire" }));
   assert.ok(linkedinRow({ content: "🚀 Looking for n8n Automation Experts!\nDM me" }));
   assert.ok(linkedinRow({ content: "We're Hiring | Freelance Automation & AI Developer" }));
   assert.ok(linkedinRow({ content: "We’re Hiring | Freelance Automation & AI Developer" }));  // curly apostrophe, as LinkedIn writes it

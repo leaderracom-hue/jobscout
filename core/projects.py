@@ -5,7 +5,7 @@ import datetime as dt
 SOURCES = {
     "n8n": ("n8n Community · Jobs", True),
     "make": ("Make Community · Hire a Pro", True),
-    "reddit": ("Reddit · r/forhire, r/n8n ועוד (API רשמי)", True),
+    "reddit": ("Reddit · r/forhire, r/n8n ועוד · Apify בתשלום (~$0.40 להרצה)", False),
     "linkedin": ("LinkedIn Posts · Apify בתשלום (~$0.16 להרצה)", False),
     "clay": ("Clay Community · #share-jobs (GTM)", True),
     "gtmjobs": ("GTM Engineer Jobs (בעיקר משרות מלאות)", False),
@@ -14,7 +14,7 @@ SOURCES = {
     "braintrust": ("Braintrust", True),
     "ajb": ("Automation Job Board", True),
 }
-PAID = {"linkedin": 0.16}  # Apify sources: $ per run, confirmed by a click before every run
+PAID = {"linkedin": 0.16, "reddit": 0.40}  # Apify sources: $ per run, confirmed by a click before every run
 KEEP_DAYS = 30
 COLUMNS = ["fit", "title", "company", "source", "posted", "budget", "eligibility", "poster", "poster_profile", "url", "why"]
 
